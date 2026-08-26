@@ -18,20 +18,21 @@ import (
 
 func testSettings() *config.Settings {
 	return &config.Settings{
-		AdminToken:           "admin-token-1234567890",
-		RegistrationToken:    "registration-token-1234567890",
-		SecretKey:            "secret-key-12345678901234567890",
-		AllowPrivateNodes:    true,
-		AllowedNodeProtocols: []string{"http", "https"},
-		NodeConnectTimeout:   5,
-		NodeRequestTimeout:   30,
-		NodeHealthTimeout:    5,
-		MaxTestBytes:         512 * 1024 * 1024,
-		DefaultDownloadBytes: 1024,
-		DefaultUploadBytes:   1024,
-		StreamChunkBytes:     1024,
-		PingCount:            3,
-		StoreNodeKeySealed:   true,
+		AdminToken:             "admin-token-1234567890",
+		RegistrationToken:      "registration-token-1234567890",
+		SecretKey:              "secret-key-12345678901234567890",
+		AllowPrivateNodes:      true,
+		AllowedNodeProtocols:   []string{"http", "https"},
+		NodeConnectTimeout:     5,
+		NodeRequestTimeout:     30,
+		NodeHealthTimeout:      5,
+		MaxTestBytes:           512 * 1024 * 1024,
+		DefaultDownloadBytes:   1024,
+		DefaultUploadBytes:     1024,
+		StreamChunkBytes:       1024,
+		PingCount:              3,
+		EnableCentralSpeedtest: true,
+		StoreNodeKeySealed:     true,
 	}
 }
 
@@ -61,12 +62,32 @@ func TestHealthz(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	var body map[string]string
+	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
 	if body["status"] != "ok" {
-		t.Fatalf("status field = %q, want ok", body["status"])
+		t.Fatalf("status field = %v, want ok", body["status"])
+	}
+	if body["enable_central_speedtest"] != true {
+		t.Fatalf("enable_central_speedtest = %v, want true", body["enable_central_speedtest"])
+	}
+}
+
+func TestConfigEndpoint(t *testing.T) {
+	handler, _ := newTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &body)
+	if body["enable_central_speedtest"] != true {
+		t.Fatalf("expected enable_central_speedtest true, got %v", body["enable_central_speedtest"])
 	}
 }
 
@@ -129,19 +150,28 @@ func TestAuthMiddleware(t *testing.T) {
 		t.Fatalf("expected 200 for valid X-Admin-Token, got %d", rec.Code)
 	}
 
-	// 2. Registration Auth
+	// 2. Registration Auth: 支持 Admin Token 或 Registration Token
 	req = httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(`{}`))
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for missing reg token, got %d", rec.Code)
+		t.Fatalf("expected 401 for missing token, got %d", rec.Code)
 	}
 
+	// 使用 Admin Token 直接注册
+	req = httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(`{}`))
+	req.Header.Set("X-Admin-Token", settings.AdminToken)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusUnauthorized {
+		t.Fatal("valid Admin Token was rejected on /api/register")
+	}
+
+	// 使用 Registration Token 注册
 	req = httptest.NewRequest(http.MethodPost, "/api/register", strings.NewReader(`{}`))
 	req.Header.Set("Authorization", "Bearer "+settings.RegistrationToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
-	// Body empty, so should be 400 Bad Request or 422 Unprocessable, NOT 401 Unauthorized
 	if rec.Code == http.StatusUnauthorized {
 		t.Fatal("valid Bearer registration token was rejected")
 	}
@@ -299,7 +329,6 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 	}))
 	defer mockNode.Close()
 
-	// 解析 mock 节点端口
 	nodeHostPort := strings.TrimPrefix(mockNode.URL, "http://")
 	host, portStr, _ := strings.Cut(nodeHostPort, ":")
 	port, _ := strconv.Atoi(portStr)
@@ -307,14 +336,13 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 	handler, _ := newTestServer(t)
 	settings := testSettings()
 
-	// 注册 mock 节点
 	reg := doRegisterAuto(t, handler, settings, map[string]any{
 		"name": "mock-node", "address": host, "port": port, "protocol": "http",
 	})
 	mockNodeKey = reg.NodeKey
 	nodeID := reg.ID
 
-	// 1. POST /api/nodes/{id}/health (后端健康检查)
+	// 1. POST /api/nodes/{id}/health
 	req := httptest.NewRequest(http.MethodPost, "/api/nodes/"+strconv.FormatInt(nodeID, 10)+"/health", nil)
 	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec := httptest.NewRecorder()
@@ -328,7 +356,7 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 		t.Fatalf("health status = %q, want online", hr.Status)
 	}
 
-	// 2. POST /api/nodes/{id}/speedtest (后端完整测速)
+	// 2. POST /api/nodes/{id}/speedtest
 	req = httptest.NewRequest(http.MethodPost, "/api/nodes/"+strconv.FormatInt(nodeID, 10)+"/speedtest", nil)
 	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
@@ -342,18 +370,16 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 		t.Fatalf("speedtest result missing components: %+v", sr)
 	}
 
-	// 3. GET /api/nodes/{id}/ping (浏览器代理 ping)
+	// 3. GET /api/nodes/{id}/ping
 	req = httptest.NewRequest(http.MethodGet, "/api/nodes/"+strconv.FormatInt(nodeID, 10)+"/ping", nil)
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("proxy ping status = %d", rec.Code)
 	}
 
-	// 4. GET /api/nodes/{id}/download (浏览器代理下载)
+	// 4. GET /api/nodes/{id}/download
 	req = httptest.NewRequest(http.MethodGet, "/api/nodes/"+strconv.FormatInt(nodeID, 10)+"/download?bytes=1024", nil)
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -363,9 +389,8 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 		t.Fatalf("proxy download len = %d, want 1024", rec.Body.Len())
 	}
 
-	// 5. POST /api/nodes/{id}/upload (浏览器代理上传)
+	// 5. POST /api/nodes/{id}/upload
 	req = httptest.NewRequest(http.MethodPost, "/api/nodes/"+strconv.FormatInt(nodeID, 10)+"/upload", strings.NewReader("hello-upload"))
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -375,11 +400,9 @@ func TestNodeProxyAndSpeedtestEndToEnd(t *testing.T) {
 
 func TestDirectSpeedtestEndpoints(t *testing.T) {
 	handler, _ := newTestServer(t)
-	settings := testSettings()
 
 	// 1. GET /api/speedtest/ping
 	req := httptest.NewRequest(http.MethodGet, "/api/speedtest/ping", nil)
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
@@ -388,7 +411,6 @@ func TestDirectSpeedtestEndpoints(t *testing.T) {
 
 	// 2. GET /api/speedtest/download
 	req = httptest.NewRequest(http.MethodGet, "/api/speedtest/download?bytes=2048", nil)
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -400,7 +422,6 @@ func TestDirectSpeedtestEndpoints(t *testing.T) {
 
 	// 3. POST /api/speedtest/upload
 	req = httptest.NewRequest(http.MethodPost, "/api/speedtest/upload", bytes.NewReader(bytes.Repeat([]byte{'z'}, 4096)))
-	req.Header.Set("X-Admin-Token", settings.AdminToken)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -408,10 +429,28 @@ func TestDirectSpeedtestEndpoints(t *testing.T) {
 	}
 }
 
+func TestCentralSpeedtestDisabled(t *testing.T) {
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	settings := testSettings()
+	settings.EnableCentralSpeedtest = false
+	handler := NewServer(st, settings, t.TempDir())
+
+	req := httptest.NewRequest(http.MethodGet, "/api/speedtest/ping", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when central speedtest disabled, got %d", rec.Code)
+	}
+}
+
 func TestSecurityHeadersAndCORS(t *testing.T) {
 	handler, _ := newTestServer(t)
 
-	// OPTIONS preflight
 	req := httptest.NewRequest(http.MethodOptions, "/api/nodes", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

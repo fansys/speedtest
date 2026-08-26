@@ -50,14 +50,15 @@ func NewServer(st *store.Store, settings *config.Settings, staticDir string) htt
 
 	// 基础与静态资源
 	mux.HandleFunc("GET /healthz", s.handleServiceHealthz)
+	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 
-	// 注册相关
-	mux.Handle("POST /api/register", s.requireRegistration(http.HandlerFunc(s.handleRegister)))
-	mux.Handle("POST /api/register/auto", s.requireRegistration(http.HandlerFunc(s.handleRegisterAuto)))
+	// 注册相关（支持 Admin Token 或 Registration Token）
+	mux.Handle("POST /api/register", s.requireRegistrationOrAdmin(http.HandlerFunc(s.handleRegister)))
+	mux.Handle("POST /api/register/auto", s.requireRegistrationOrAdmin(http.HandlerFunc(s.handleRegisterAuto)))
 
-	// 节点管理 API
+	// 节点管理 API（需要 Admin Token）
 	mux.Handle("GET /api/nodes", s.requireAdmin(http.HandlerFunc(s.handleListNodes)))
 	mux.Handle("GET /api/nodes/{id}", s.requireAdmin(http.HandlerFunc(s.handleGetNode)))
 	mux.Handle("POST /api/nodes/{id}/enable", s.requireAdmin(http.HandlerFunc(s.handleEnableNode)))
@@ -71,7 +72,7 @@ func NewServer(st *store.Store, settings *config.Settings, staticDir string) htt
 	mux.HandleFunc("GET /api/nodes/{id}/download", s.handleNodeDownloadProxy)
 	mux.HandleFunc("POST /api/nodes/{id}/upload", s.handleNodeUploadProxy)
 
-	// Web 中心自测 API
+	// Web 中心自测 API（受 EnableCentralSpeedtest 环境变量控制）
 	mux.HandleFunc("GET /api/speedtest/ping", s.handleDirectPing)
 	mux.HandleFunc("GET /api/speedtest/download", s.handleDirectDownload)
 	mux.HandleFunc("POST /api/speedtest/upload", s.handleDirectUpload)
@@ -109,7 +110,19 @@ func (s *server) corsAndLoggingMiddleware(next http.Handler) http.Handler {
 
 func (s *server) handleServiceHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":                   "ok",
+		"enable_central_speedtest": s.settings.EnableCentralSpeedtest,
+	})
+}
+
+func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":                   "ok",
+		"enable_central_speedtest": s.settings.EnableCentralSpeedtest,
+		"ping_count":               s.settings.PingCount,
+	})
 }
 
 func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -129,24 +142,41 @@ func (s *server) requireAdmin(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) requireRegistration(next http.Handler) http.Handler {
+// requireRegistrationOrAdmin 鉴权：接受正确的 ADMIN_TOKEN 或 REGISTRATION_TOKEN（网页管理端只需输入 Admin Token 即可完成全部操作）。
+func (s *server) requireRegistrationOrAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := security.PickToken(r.Header.Get("X-Registration-Token"), r.Header.Get("Authorization"))
-		if token == "" || !security.ConstantTimeEquals(token, s.settings.RegistrationToken) {
-			log.Printf("[web] 节点注册未授权拒绝: %s %s, 来源IP=%s (REGISTRATION_TOKEN 无效或缺失)", r.Method, r.URL.Path, r.RemoteAddr)
-			writeError(w, http.StatusUnauthorized, "注册令牌无效或缺失")
+		adminToken := security.PickToken(r.Header.Get("X-Admin-Token"), r.Header.Get("Authorization"))
+		if adminToken != "" && security.ConstantTimeEquals(adminToken, s.settings.AdminToken) {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, r)
+
+		regToken := security.PickToken(r.Header.Get("X-Registration-Token"), r.Header.Get("Authorization"))
+		if regToken != "" && security.ConstantTimeEquals(regToken, s.settings.RegistrationToken) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		log.Printf("[web] 注册接口未授权拒绝: %s %s, 来源IP=%s (ADMIN_TOKEN 或 REGISTRATION_TOKEN 无效或缺失)", r.Method, r.URL.Path, r.RemoteAddr)
+		writeError(w, http.StatusUnauthorized, "令牌无效或缺失")
 	})
 }
 
 func (s *server) handleDirectPing(w http.ResponseWriter, r *http.Request) {
+	if !s.settings.EnableCentralSpeedtest {
+		writeError(w, http.StatusForbidden, "中心节点测速功能已禁用")
+		return
+	}
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) handleDirectDownload(w http.ResponseWriter, r *http.Request) {
+	if !s.settings.EnableCentralSpeedtest {
+		writeError(w, http.StatusForbidden, "中心节点测速功能已禁用")
+		return
+	}
+
 	total := s.settings.DefaultDownloadBytes
 	if v := r.URL.Query().Get("bytes"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
@@ -180,6 +210,11 @@ func (s *server) handleDirectDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDirectUpload(w http.ResponseWriter, r *http.Request) {
+	if !s.settings.EnableCentralSpeedtest {
+		writeError(w, http.StatusForbidden, "中心节点测速功能已禁用")
+		return
+	}
+
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	total, err := io.Copy(io.Discard, io.LimitReader(r.Body, s.settings.MaxTestBytes+1))
 	if err != nil {

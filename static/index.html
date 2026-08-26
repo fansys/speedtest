@@ -396,25 +396,18 @@
   <dialog id="modal-tokens" class="hud-modal">
     <div class="hud-modal-content">
       <div class="hud-modal-header">
-        <h3 data-i18n="token_modal_title">管理与注册令牌配置</h3>
+        <h3 data-i18n="token_modal_title">管理令牌配置</h3>
         <button class="modal-close" id="btn-close-tokens">&times;</button>
       </div>
       <form id="form-tokens" class="hud-modal-body">
         <div class="hud-notice" data-i18n="token_modal_notice">
-          令牌仅保存在当前浏览器的本地存储中，供管理和注册节点使用。
+          管理令牌仅保存在当前浏览器的本地存储中，供管理节点和发起巡检使用。
         </div>
         <div class="hud-field">
           <label for="input-admin-token" class="hud-label" data-i18n="admin_token_label">管理员令牌 (ADMIN_TOKEN)</label>
           <div class="hud-pw-wrap">
             <input type="password" id="input-admin-token" class="hud-input" placeholder="输入管理员令牌" data-i18n-ph="admin_token_ph" />
             <button type="button" class="btn-toggle-pw" data-target="input-admin-token" data-i18n="btn_toggle_pw">显隐</button>
-          </div>
-        </div>
-        <div class="hud-field">
-          <label for="input-registration-token" class="hud-label" data-i18n="reg_token_label">节点注册令牌 (REGISTRATION_TOKEN)</label>
-          <div class="hud-pw-wrap">
-            <input type="password" id="input-registration-token" class="hud-input" placeholder="输入节点注册令牌" data-i18n-ph="reg_token_ph" />
-            <button type="button" class="btn-toggle-pw" data-target="input-registration-token" data-i18n="btn_toggle_pw">显隐</button>
           </div>
         </div>
         <div class="hud-modal-footer">

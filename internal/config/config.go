@@ -34,16 +34,14 @@ type Settings struct {
 	NodeHealthTimeout    float64
 
 	// ---- 测速参数 ----
-	MaxTestBytes         int64
-	DefaultDownloadBytes int64
-	DefaultUploadBytes   int64
-	StreamChunkBytes     int
-	PingCount            int
+	MaxTestBytes           int64
+	DefaultDownloadBytes   int64
+	DefaultUploadBytes     int64
+	StreamChunkBytes       int
+	PingCount              int
+	EnableCentralSpeedtest bool // 控制中心 Web 节点自身是否开启测速功能 (ENABLE_CENTRAL_SPEEDTEST / ENABLE_WEB_SPEEDTEST, 默认 true)
 
 	// ---- 节点 key 存储策略 ----
-	// true  : 除 sha256 哈希外，额外保存一份用 SECRET_KEY 加密封存的 node_key，
-	//         中心服务可自动做健康检查 / 测速。
-	// false : 只保存哈希，任何对节点的访问都必须由调用方显式提供 node_key。
 	StoreNodeKeySealed bool
 }
 
@@ -102,8 +100,7 @@ func getEnvFloat(key string, def float64) (float64, error) {
 	return parsed, nil
 }
 
-// Load 从环境变量（.env 作为兜底）加载并校验 Settings。校验失败直接返回 error，
-// 调用方（cmd/web/main.go）应当据此拒绝启动。
+// Load 从环境变量（.env 作为兜底）加载并校验 Settings。
 func Load() (*Settings, error) {
 	loadDotEnv(".env")
 
@@ -162,6 +159,16 @@ func Load() (*Settings, error) {
 		return nil, err
 	}
 
+	// 控制中心 Web 节点自身是否开启测速功能 (默认 true，可通过 ENABLE_CENTRAL_SPEEDTEST=false 关闭)
+	if s.EnableCentralSpeedtest, err = getEnvBool("ENABLE_CENTRAL_SPEEDTEST", true); err != nil {
+		return nil, err
+	}
+	if v, ok := os.LookupEnv("ENABLE_WEB_SPEEDTEST"); ok && v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			s.EnableCentralSpeedtest = b
+		}
+	}
+
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -218,8 +225,7 @@ func (s *Settings) SecretValues() []string {
 	return out
 }
 
-// DatabasePath 把 DATABASE_URL（形如 sqlite:./data/librespeed.db 或
-// sqlite:///abs/path.db）归一化成文件系统路径。
+// DatabasePath 把 DATABASE_URL 归一化成文件系统路径。
 func (s *Settings) DatabasePath() string {
 	v := s.DatabaseURL
 	switch {

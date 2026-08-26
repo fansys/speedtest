@@ -139,12 +139,10 @@ const i18nDict = {
     key_modal_hint: "请妥善保存此密钥，并注入节点 Agent 的 NODE_KEY 环境变量。",
     key_modal_close: "我已妥善保存并关闭",
 
-    token_modal_title: "管理与注册令牌配置",
-    token_modal_notice: "令牌仅保存在当前浏览器的本地存储中，供管理和注册节点使用。",
+    token_modal_title: "管理令牌配置",
+    token_modal_notice: "管理令牌仅保存在当前浏览器的本地存储中，供管理节点和发起巡检使用。",
     admin_token_label: "管理员令牌 (ADMIN_TOKEN)",
     admin_token_ph: "输入管理员令牌",
-    reg_token_label: "节点注册令牌 (REGISTRATION_TOKEN)",
-    reg_token_ph: "输入节点注册令牌",
     btn_toggle_pw: "显隐",
     btn_clear_token: "清空本地令牌",
     btn_save_token: "保存配置",
@@ -152,7 +150,7 @@ const i18nDict = {
 
     toast_copied: "密钥已复制到剪贴板",
     toast_copy_fail: "剪贴板不可用，请手动选中复制",
-    toast_tokens_saved: "令牌配置已保存到本地",
+    toast_tokens_saved: "管理令牌配置已保存到本地",
     toast_tokens_cleared: "已清空本地令牌",
     toast_test_completed: "测速已完成",
     toast_test_aborted: "测速已取消",
@@ -298,12 +296,10 @@ const i18nDict = {
     key_modal_hint: "Please save this key securely and inject it into the Node Agent's NODE_KEY environment variable.",
     key_modal_close: "I have saved this key. Close",
 
-    token_modal_title: "Admin & Registration Tokens",
-    token_modal_notice: "Tokens are stored only in local browser localStorage for management API authentication.",
+    token_modal_title: "Admin Token Configuration",
+    token_modal_notice: "Admin token is stored in your local browser for node management and inspection.",
     admin_token_label: "Admin Token (ADMIN_TOKEN)",
     admin_token_ph: "Enter ADMIN_TOKEN",
-    reg_token_label: "Registration Token (REGISTRATION_TOKEN)",
-    reg_token_ph: "Enter REGISTRATION_TOKEN",
     btn_toggle_pw: "Show/Hide",
     btn_clear_token: "Clear Tokens",
     btn_save_token: "Save Configuration",
@@ -311,7 +307,7 @@ const i18nDict = {
 
     toast_copied: "Key copied to clipboard",
     toast_copy_fail: "Clipboard API unavailable, please copy manually",
-    toast_tokens_saved: "Tokens saved to local browser",
+    toast_tokens_saved: "Admin token saved to local browser",
     toast_tokens_cleared: "Local tokens cleared",
     toast_test_completed: "Speedtest completed successfully",
     toast_test_aborted: "Speedtest aborted",
@@ -331,7 +327,7 @@ const state = {
   lang: "zh",
   theme: "auto",
   adminToken: "",
-  registrationToken: "",
+  enableCentralSpeedtest: true, // 由服务端配置控制
   nodes: [],
   selectedTarget: "direct",
   activeFilter: "all",
@@ -442,7 +438,6 @@ const els = {
   modalTokens: document.getElementById("modal-tokens"),
   formTokens: document.getElementById("form-tokens"),
   inputAdminToken: document.getElementById("input-admin-token"),
-  inputRegToken: document.getElementById("input-registration-token"),
   btnCloseTokens: document.getElementById("btn-close-tokens"),
   btnClearTokens: document.getElementById("btn-clear-tokens"),
 
@@ -1091,38 +1086,31 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
-// ================= 令牌存储与请求头 =================
+// ================= 令牌存储与请求头 (仅管理 ADMIN_TOKEN) =================
 
 function loadTokens() {
   state.adminToken = localStorage.getItem("ls_admin_token") || "";
-  state.registrationToken = localStorage.getItem("ls_registration_token") || "";
   updateTokenUI();
 }
 
-function saveTokens(admin, reg) {
+function saveTokens(admin) {
   state.adminToken = admin.trim();
-  state.registrationToken = reg.trim();
   if (state.adminToken) localStorage.setItem("ls_admin_token", state.adminToken);
   else localStorage.removeItem("ls_admin_token");
-  if (state.registrationToken) localStorage.setItem("ls_registration_token", state.registrationToken);
-  else localStorage.removeItem("ls_registration_token");
   updateTokenUI();
   showToast(t("toast_tokens_saved"), "success");
 }
 
 function clearTokens() {
   state.adminToken = "";
-  state.registrationToken = "";
   localStorage.removeItem("ls_admin_token");
-  localStorage.removeItem("ls_registration_token");
-  els.inputAdminToken.value = "";
-  els.inputRegToken.value = "";
+  if (els.inputAdminToken) els.inputAdminToken.value = "";
   updateTokenUI();
   showToast(t("toast_tokens_cleared"), "info");
 }
 
 function updateTokenUI() {
-  if (state.adminToken || state.registrationToken) {
+  if (state.adminToken) {
     els.tokenStatusLabel.textContent = t("token_configured");
   } else {
     els.tokenStatusLabel.textContent = t("token");
@@ -1133,14 +1121,6 @@ function adminHeaders() {
   const headers = {};
   if (state.adminToken) {
     headers["X-Admin-Token"] = state.adminToken;
-  }
-  return headers;
-}
-
-function registrationHeaders() {
-  const headers = {};
-  if (state.registrationToken) {
-    headers["X-Registration-Token"] = state.registrationToken;
   }
   return headers;
 }
@@ -1285,7 +1265,6 @@ class SpeedtestEngine {
     const pings = [];
     const signal = this.abortController.signal;
 
-    // 非 Web 节点时直接请求 Node 节点自身的测速端点
     const pingURL = this.nodeObj
       ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/ping`
       : "/api/speedtest/ping";
@@ -1361,7 +1340,6 @@ class SpeedtestEngine {
     let smoothedMbps = 0;
 
     const chunkSizeToRequest = 64 * 1024 * 1024;
-    // 非 Web 节点时直接请求 Node 节点自身的测速端点
     const downloadURL = this.nodeObj
       ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/download?bytes=${chunkSizeToRequest}`
       : `/api/speedtest/download?bytes=${chunkSizeToRequest}`;
@@ -1460,7 +1438,6 @@ class SpeedtestEngine {
     const signal = this.abortController.signal;
     const testDurationMs = this.duration * 1000;
 
-    // 非 Web 节点时直接请求 Node 节点自身的测速端点
     const uploadURL = this.nodeObj
       ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/upload`
       : "/api/speedtest/upload";
@@ -1621,7 +1598,15 @@ function selectNode(targetId) {
 
 function renderNodeSelect() {
   const cur = els.nodeSelect.value;
-  els.nodeSelect.innerHTML = `<option value="direct">${t("direct_node")}</option>`;
+  els.nodeSelect.innerHTML = "";
+
+  // 仅在中心测速功能开启时添加直连选项
+  if (state.enableCentralSpeedtest) {
+    const optDirect = document.createElement("option");
+    optDirect.value = "direct";
+    optDirect.textContent = t("direct_node");
+    els.nodeSelect.appendChild(optDirect);
+  }
 
   state.nodes.forEach((node) => {
     if (!node.enabled) return;
@@ -1634,6 +1619,11 @@ function renderNodeSelect() {
 
   if (cur && Array.from(els.nodeSelect.options).some((o) => o.value === cur)) {
     els.nodeSelect.value = cur;
+  } else if (!state.enableCentralSpeedtest && state.nodes.length > 0) {
+    const firstActive = state.nodes.find((n) => n.enabled);
+    if (firstActive) {
+      selectNode(firstActive.id);
+    }
   }
 }
 
@@ -1643,8 +1633,12 @@ function pickLowestLatencyNode() {
   );
 
   if (onlineNodes.length === 0) {
-    showToast(t("rtt_unknown"), "info");
-    selectNode("direct");
+    if (state.enableCentralSpeedtest) {
+      showToast(t("rtt_unknown"), "info");
+      selectNode("direct");
+    } else {
+      showToast(t("nodes_empty"), "info");
+    }
     return;
   }
 
@@ -1672,7 +1666,7 @@ async function refreshNodes(silent = false) {
     if (!silent) {
       if (err.status === 401 || String(err.message).includes("令牌") || String(err.message).includes("token")) {
         els.nodesTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:2rem;">
-          ${state.lang === "zh" ? "当前处于访客测速模式（可直接执行中心测速）。如需管理节点矩阵，请在右上角配置 Admin Token。" : "Guest speedtest mode. To manage telemetry matrix, configure Admin Token."}
+          ${state.lang === "zh" ? "当前处于访客测速模式（可直接执行测速）。如需管理节点矩阵，请在右上角配置 Admin Token。" : "Guest speedtest mode. To manage telemetry matrix, configure Admin Token."}
         </td></tr>`;
       } else {
         els.nodesTableBody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--neon-red);padding:2rem;">${escapeHtml(err.message)}</td></tr>`;
@@ -1811,7 +1805,7 @@ async function handleNodeAction(nodeId, action) {
       });
       showToast(t("toast_node_deleted"), "success");
       if (state.selectedTarget === String(nodeId)) {
-        selectNode("direct");
+        selectNode(state.enableCentralSpeedtest ? "direct" : (state.nodes[0] ? state.nodes[0].id : ""));
       }
       refreshNodes(true);
     } catch (err) {
@@ -1843,7 +1837,7 @@ async function registerNewNode(e) {
   try {
     const res = await apiFetch("/api/register", {
       method: "POST",
-      headers: registrationHeaders(),
+      headers: adminHeaders(), // 使用 Admin Token 即可直接注册
       body: payload,
     });
 
@@ -1985,10 +1979,9 @@ function initEventListeners() {
     els.displayNewKey.textContent = "";
   });
 
-  // 令牌弹窗
+  // 令牌弹窗（仅管理 Admin Token）
   els.btnOpenTokens.addEventListener("click", () => {
-    els.inputAdminToken.value = state.adminToken;
-    els.inputRegToken.value = state.registrationToken;
+    if (els.inputAdminToken) els.inputAdminToken.value = state.adminToken;
     els.modalTokens.showModal();
   });
   els.btnCloseTokens.addEventListener("click", () => els.modalTokens.close());
@@ -1998,7 +1991,7 @@ function initEventListeners() {
   });
   els.formTokens.addEventListener("submit", (e) => {
     e.preventDefault();
-    saveTokens(els.inputAdminToken.value, els.inputRegToken.value);
+    saveTokens(els.inputAdminToken.value);
     els.modalTokens.close();
     refreshNodes();
   });
@@ -2024,7 +2017,7 @@ function initEventListeners() {
 }
 
 // ================= 初始化入口 =================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   initLanguage();
 
   const savedDuration = localStorage.getItem("ls_duration");
@@ -2043,5 +2036,16 @@ document.addEventListener("DOMContentLoaded", () => {
   loadTokens();
   loadHistory();
   initEventListeners();
+
+  // 获取服务端环境配置（是否开启中心节点测速）
+  try {
+    const cfg = await apiFetch("/api/config");
+    if (cfg && typeof cfg.enable_central_speedtest === "boolean") {
+      state.enableCentralSpeedtest = cfg.enable_central_speedtest;
+    }
+  } catch {
+    state.enableCentralSpeedtest = true;
+  }
+
   refreshNodes();
 });
