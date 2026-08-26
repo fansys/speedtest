@@ -26,7 +26,7 @@ func TestNodeAuth(t *testing.T) {
 		header     func(r *http.Request)
 		wantStatus int
 	}{
-		{"missing key", func(r *http.Request) {}, http.StatusUnauthorized},
+		{"missing key on healthz", func(r *http.Request) {}, http.StatusUnauthorized},
 		{"wrong X-Node-Key", func(r *http.Request) { r.Header.Set("X-Node-Key", "wrong-key") }, http.StatusUnauthorized},
 		{"wrong bearer", func(r *http.Request) { r.Header.Set("Authorization", "Bearer wrong-key") }, http.StatusUnauthorized},
 		{"correct X-Node-Key", func(r *http.Request) { r.Header.Set("X-Node-Key", testNodeKey) }, http.StatusOK},
@@ -76,6 +76,7 @@ func TestNodePingAuthenticated(t *testing.T) {
 	}
 	handler := srv.routes()
 
+	// 携带正确 key -> 204
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	req.Header.Set("X-Node-Key", testNodeKey)
 	rec := httptest.NewRecorder()
@@ -84,11 +85,21 @@ func TestNodePingAuthenticated(t *testing.T) {
 		t.Fatalf("ping status = %d, want 204", rec.Code)
 	}
 
-	reqUnauth := httptest.NewRequest(http.MethodGet, "/ping", nil)
-	recUnauth := httptest.NewRecorder()
-	handler.ServeHTTP(recUnauth, reqUnauth)
-	if recUnauth.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated ping status = %d, want 401", recUnauth.Code)
+	// 携带错误 key -> 401
+	reqWrong := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	reqWrong.Header.Set("X-Node-Key", "wrong-key")
+	recWrong := httptest.NewRecorder()
+	handler.ServeHTTP(recWrong, reqWrong)
+	if recWrong.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong key ping status = %d, want 401", recWrong.Code)
+	}
+
+	// 浏览器端公开直连测速 (不带 key) -> 204
+	reqPublic := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	recPublic := httptest.NewRecorder()
+	handler.ServeHTTP(recPublic, reqPublic)
+	if recPublic.Code != http.StatusNoContent {
+		t.Fatalf("public ping status = %d, want 204", recPublic.Code)
 	}
 }
 
@@ -100,7 +111,6 @@ func TestNodeDownloadUpload(t *testing.T) {
 	handler := srv.routes()
 
 	reqDl := httptest.NewRequest(http.MethodGet, "/download?bytes=2048", nil)
-	reqDl.Header.Set("X-Node-Key", testNodeKey)
 	recDl := httptest.NewRecorder()
 	handler.ServeHTTP(recDl, reqDl)
 	if recDl.Code != http.StatusOK {
@@ -112,7 +122,6 @@ func TestNodeDownloadUpload(t *testing.T) {
 
 	uploadBody := bytes.NewReader(bytes.Repeat([]byte{'x'}, 4096))
 	reqUl := httptest.NewRequest(http.MethodPost, "/upload", uploadBody)
-	reqUl.Header.Set("X-Node-Key", testNodeKey)
 	recUl := httptest.NewRecorder()
 	handler.ServeHTTP(recUl, reqUl)
 	if recUl.Code != http.StatusOK {
@@ -131,7 +140,6 @@ func TestNodeUploadLimitExceeded(t *testing.T) {
 	// 上传 2048 字节，超过 1024 限制 -> 应返回 413
 	uploadBody := bytes.NewReader(bytes.Repeat([]byte{'x'}, 2048))
 	req := httptest.NewRequest(http.MethodPost, "/upload", uploadBody)
-	req.Header.Set("X-Node-Key", testNodeKey)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -150,7 +158,6 @@ func TestNodeDownloadClamped(t *testing.T) {
 
 	// 请求 100000 字节，应截断到 maxBytes (4096)
 	req := httptest.NewRequest(http.MethodGet, "/download?bytes=100000", nil)
-	req.Header.Set("X-Node-Key", testNodeKey)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -193,7 +200,7 @@ func TestResolveNodeKeyAutoRegister(t *testing.T) {
 		Name:              "test-node",
 		Address:           "127.0.0.1",
 		ListenPort:        8081,
-		AdvertisePort:     18081, // 支持不同的测速与监听端口
+		AdvertisePort:     18081,
 		Protocol:          "http",
 		NodeIni:           iniPath,
 		RegisterRetries:   2,

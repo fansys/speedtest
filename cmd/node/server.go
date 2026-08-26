@@ -76,9 +76,21 @@ func (s *nodeServer) corsAndLoggingMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *nodeServer) authenticate(r *http.Request) bool {
+// authenticateAdmin 校验管理/健康检查接口（/healthz）：必须携带正确的 node_key。
+func (s *nodeServer) authenticateAdmin(r *http.Request) bool {
 	supplied := security.PickToken(r.Header.Get("X-Node-Key"), r.Header.Get("Authorization"))
 	return supplied != "" && security.ConstantTimeEquals(supplied, s.nodeKey)
+}
+
+// authenticateSpeedtest 校验测速接口（/ping, /download, /upload）：
+// 如果客户端携带了 key，则必须匹配（错误 key 返回 401）；
+// 未携带 key 时允许浏览器客户端直接发起公开测速。
+func (s *nodeServer) authenticateSpeedtest(r *http.Request) bool {
+	supplied := security.PickToken(r.Header.Get("X-Node-Key"), r.Header.Get("Authorization"))
+	if supplied == "" {
+		return true // 允许浏览器端直连测速
+	}
+	return security.ConstantTimeEquals(supplied, s.nodeKey)
 }
 
 func (s *nodeServer) unauthorized(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +99,7 @@ func (s *nodeServer) unauthorized(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticate(r) {
+	if !s.authenticateAdmin(r) {
 		s.unauthorized(w, r)
 		return
 	}
@@ -96,7 +108,7 @@ func (s *nodeServer) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeServer) handlePing(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticate(r) {
+	if !s.authenticateSpeedtest(r) {
 		s.unauthorized(w, r)
 		return
 	}
@@ -105,7 +117,7 @@ func (s *nodeServer) handlePing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeServer) handleDownload(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticate(r) {
+	if !s.authenticateSpeedtest(r) {
 		s.unauthorized(w, r)
 		return
 	}
@@ -145,7 +157,7 @@ func (s *nodeServer) handleDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *nodeServer) handleUpload(w http.ResponseWriter, r *http.Request) {
-	if !s.authenticate(r) {
+	if !s.authenticateSpeedtest(r) {
 		s.unauthorized(w, r)
 		return
 	}

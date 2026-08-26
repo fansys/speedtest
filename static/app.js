@@ -17,7 +17,7 @@ const i18nDict = {
     lang_btn: "English",
 
     node_route: "测速节点",
-    direct_node: "中心节点",
+    direct_node: "Web 中心服务 (本机直连)",
     rtt_local: "延迟: 本地",
     rtt_unknown: "延迟: 未知",
     duration_label: "测速时长",
@@ -176,7 +176,7 @@ const i18nDict = {
     lang_btn: "中文",
 
     node_route: "TARGET NODE",
-    direct_node: "Central Server",
+    direct_node: "Central Server (Direct)",
     rtt_local: "Latency: Local",
     rtt_unknown: "Latency: Unknown",
     duration_label: "DURATION",
@@ -343,7 +343,6 @@ const state = {
 };
 
 const els = {
-  // 语言与主题切换
   btnLangToggle: document.getElementById("btn-lang-toggle"),
   langLabel: document.getElementById("lang-label"),
   btnThemeToggle: document.getElementById("btn-theme-toggle"),
@@ -351,21 +350,18 @@ const els = {
   themeIconLight: document.getElementById("theme-icon-light"),
   themeLabel: document.getElementById("theme-label"),
 
-  // 导航与统计
   statOnlineCount: document.getElementById("stat-online-count"),
   statTotalCount: document.getElementById("stat-total-count"),
   tokenStatusLabel: document.getElementById("token-status-label"),
   btnRefresh: document.getElementById("btn-refresh"),
   btnOpenTokens: document.getElementById("btn-open-tokens"),
 
-  // 测速节点与时长配置条
   nodeSelect: document.getElementById("speedtest-node-select"),
   durationSelect: document.getElementById("speedtest-duration-select"),
   targetStatusDot: document.getElementById("target-status-dot"),
   targetLatencyBadge: document.getElementById("target-latency-badge"),
   btnPickLowest: document.getElementById("btn-pick-lowest"),
 
-  // 核心实时三大指标
   cardPing: document.getElementById("card-metric-ping"),
   cardDownload: document.getElementById("card-metric-download"),
   cardUpload: document.getElementById("card-metric-upload"),
@@ -380,7 +376,6 @@ const els = {
   valUploadPeak: document.getElementById("val-upload-peak"),
   valUploadBytes: document.getElementById("val-upload-bytes"),
 
-  // 仪表盘区域
   gaugeCanvas: document.getElementById("gauge-canvas"),
   dialIdleView: document.getElementById("dial-idle-view"),
   dialRunningView: document.getElementById("dial-running-view"),
@@ -396,40 +391,33 @@ const els = {
   finishRatingBadge: document.getElementById("finish-rating-badge"),
   finishScoreDesc: document.getElementById("finish-score-desc"),
 
-  // 实时示波器速度图表
   chartCanvas: document.getElementById("chart-canvas"),
   chartPeakBadge: document.getElementById("chart-peak-badge"),
 
-  // 步骤流水线进度条
   meterBar: document.getElementById("test-meter-bar"),
 
-  // 质量评估
   ratingEvalCard: document.getElementById("rating-evaluation-card"),
   evalTitle: document.getElementById("eval-title"),
   evalDesc: document.getElementById("eval-desc"),
   evalTags: document.getElementById("eval-tags"),
 
-  // 状态横幅
   statusBanner: document.getElementById("test-status-banner"),
   statusText: document.getElementById("test-status-text"),
   errorBanner: document.getElementById("test-error-banner"),
   errorText: document.getElementById("test-error-text"),
   btnDismissError: document.getElementById("btn-dismiss-error"),
 
-  // 选项卡系统
   tabBtns: document.querySelectorAll(".hud-tab"),
   tabPanes: document.querySelectorAll(".hud-tab-pane"),
   tabActionsHistory: document.getElementById("tab-actions-history"),
   tabActionsNodes: document.getElementById("tab-actions-nodes"),
 
-  // 历史记录
   historyCountBadge: document.getElementById("history-count-badge"),
   historyTableBody: document.getElementById("history-table-body"),
   historyEmpty: document.getElementById("history-empty"),
   btnExportHistory: document.getElementById("btn-export-history"),
   btnClearHistory: document.getElementById("btn-clear-history"),
 
-  // 节点管理
   nodesCountBadge: document.getElementById("nodes-count-badge"),
   filterSearch: document.getElementById("filter-search"),
   filterPills: document.querySelectorAll(".hud-filter-btn"),
@@ -438,7 +426,6 @@ const els = {
   nodesEmpty: document.getElementById("nodes-empty"),
   emptyMessage: document.getElementById("empty-message"),
 
-  // 节点注册表单
   formRegister: document.getElementById("form-register"),
   regName: document.getElementById("reg-name"),
   regAddress: document.getElementById("reg-address"),
@@ -446,7 +433,6 @@ const els = {
   regProtocol: document.getElementById("reg-protocol"),
   regMetadata: document.getElementById("reg-metadata"),
 
-  // 模态弹窗
   modalOneTimeKey: document.getElementById("modal-one-time-key"),
   displayNewKey: document.getElementById("display-new-key"),
   btnCopyKey: document.getElementById("btn-copy-key"),
@@ -662,7 +648,6 @@ class SpeedometerGauge {
 
     const isDark = document.documentElement.getAttribute("data-theme") !== "light";
 
-    // 1. 发光环轨
     ctx.lineWidth = 7;
     ctx.lineCap = "round";
     ctx.strokeStyle = isDark ? "rgba(0, 240, 255, 0.09)" : "rgba(0, 136, 255, 0.12)";
@@ -670,7 +655,6 @@ class SpeedometerGauge {
     ctx.arc(cx, cy, r, startAngle, endAngle);
     ctx.stroke();
 
-    // 2. 环形刻度
     const ticks = 8;
     ctx.font = "700 10px monospace";
     ctx.textAlign = "center";
@@ -704,7 +688,6 @@ class SpeedometerGauge {
       }
     }
 
-    // 3. 动态激光测速弧线
     if (this.value > 0) {
       const progress = Math.min(1, this.value / this.maxScale);
       const currentAngle = startAngle + progress * sweep;
@@ -731,7 +714,6 @@ class SpeedometerGauge {
       ctx.arc(cx, cy, r, startAngle, currentAngle);
       ctx.stroke();
 
-      // 4. 激光发光顶点
       const headX = cx + Math.cos(currentAngle) * r;
       const headY = cy + Math.sin(currentAngle) * r;
 
@@ -820,7 +802,6 @@ class SpeedChart {
 
     const isDark = document.documentElement.getAttribute("data-theme") !== "light";
 
-    // 1. 示波器网格线与 Y 轴刻度
     const yTicks = 3;
     ctx.lineWidth = 1;
     ctx.strokeStyle = isDark ? "rgba(0, 240, 255, 0.08)" : "rgba(0, 136, 255, 0.1)";
@@ -842,7 +823,6 @@ class SpeedChart {
       ctx.fillText(`${val}`, padding.left - 6, y);
     }
 
-    // 2. 时间 X 轴网格线
     const maxT = this.maxTime || 15;
     const step = maxT <= 10 ? 2 : maxT <= 20 ? 5 : 10;
     ctx.textAlign = "center";
@@ -852,7 +832,6 @@ class SpeedChart {
       ctx.fillText(`${s}s`, x, h - padding.bottom + 6);
     }
 
-    // 3. 绘制平滑激光波形曲线
     const drawSeries = (points, strokeColor, fillColor) => {
       if (points.length < 2) return;
 
@@ -1196,7 +1175,7 @@ async function apiFetch(path, { method = "GET", headers = {}, body, signal } = {
   return data;
 }
 
-// ================= LibreSpeed 测速引擎 =================
+// ================= LibreSpeed 测速引擎 (直接请求 Node 自身地址) =================
 
 class SpeedtestEngine {
   constructor() {
@@ -1229,11 +1208,13 @@ class SpeedtestEngine {
     if (gaugeEngine) gaugeEngine.setMode("idle", "Mbps", t("ready"));
     this.showStatus(t("ready") + "...");
 
+    const targetDisplayName = this.nodeObj ? this.nodeObj.name : t("direct_node");
+
     const testSummary = {
       id: "hist-" + Date.now(),
       timestamp: new Date().toLocaleString(state.lang === "zh" ? "zh-CN" : "en-US", { hour12: false }),
       targetId: this.target,
-      targetName: this.nodeObj ? this.nodeObj.name : t("direct_node"),
+      targetName: targetDisplayName,
       ping: 0,
       jitter: 0,
       download: 0,
@@ -1243,17 +1224,17 @@ class SpeedtestEngine {
     };
 
     try {
-      // 阶段 1: Ping 与 Jitter 测试
+      // 阶段 1: Ping 与 Jitter 测试 (直接请求 Node 端点)
       const pingRes = await this.runPingPhase();
       testSummary.ping = pingRes.avg;
       testSummary.jitter = pingRes.jitter;
 
-      // 阶段 2: 流式下载测速
+      // 阶段 2: 流式下载测速 (直接请求 Node 端点)
       const dlRes = await this.runDownloadPhase();
       testSummary.download = dlRes.mbps;
       testSummary.downloadBytes = dlRes.bytes;
 
-      // 阶段 3: 上传测速
+      // 阶段 3: 上传测速 (直接请求 Node 端点)
       const ulRes = await this.runUploadPhase();
       testSummary.upload = ulRes.mbps;
       testSummary.uploadBytes = ulRes.bytes;
@@ -1294,6 +1275,7 @@ class SpeedtestEngine {
     }
   }
 
+  // 阶段 1: Ping (直接请求 Node 自身地址)
   async runPingPhase() {
     this.setUIStage("ping", 15);
     els.cardPing.classList.add("active");
@@ -1303,18 +1285,19 @@ class SpeedtestEngine {
     const pings = [];
     const signal = this.abortController.signal;
 
+    // 非 Web 节点时直接请求 Node 节点自身的测速端点
+    const pingURL = this.nodeObj
+      ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/ping`
+      : "/api/speedtest/ping";
+
     for (let i = 0; i < this.pingCount; i++) {
       if (signal.aborted) throw new Error("aborted");
-
-      const pingURL = this.target === "direct"
-        ? "/api/speedtest/ping"
-        : `/api/nodes/${this.target}/ping`;
 
       const t0 = performance.now();
       try {
         const resp = await fetch(pingURL, {
           method: "GET",
-          headers: { ...adminHeaders(), "Cache-Control": "no-cache" },
+          headers: { "Cache-Control": "no-cache" },
           signal,
         });
         if (!resp.ok && resp.status !== 204) {
@@ -1322,7 +1305,8 @@ class SpeedtestEngine {
         }
       } catch (err) {
         if (err.name === "AbortError") throw err;
-        throw new Error(`${err.message}`);
+        const targetDesc = this.nodeObj ? `${this.nodeObj.name} (${pingURL})` : "Web Center";
+        throw new Error(`Ping failed [${targetDesc}]: ${err.message}`);
       }
       const latency = performance.now() - t0;
       pings.push(latency);
@@ -1360,6 +1344,7 @@ class SpeedtestEngine {
     return { avg: finalAvg, jitter: finalJitter };
   }
 
+  // 阶段 2: 下载测速 (直接请求 Node 自身地址)
   async runDownloadPhase() {
     this.setUIStage("download", 35);
     els.cardDownload.classList.add("active");
@@ -1376,21 +1361,29 @@ class SpeedtestEngine {
     let smoothedMbps = 0;
 
     const chunkSizeToRequest = 64 * 1024 * 1024;
-    const downloadURL = this.target === "direct"
-      ? `/api/speedtest/download?bytes=${chunkSizeToRequest}`
-      : `/api/nodes/${this.target}/download?bytes=${chunkSizeToRequest}`;
+    // 非 Web 节点时直接请求 Node 节点自身的测速端点
+    const downloadURL = this.nodeObj
+      ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/download?bytes=${chunkSizeToRequest}`
+      : `/api/speedtest/download?bytes=${chunkSizeToRequest}`;
 
     while (performance.now() - startTime < testDurationMs) {
       if (signal.aborted) throw new Error("aborted");
 
-      const resp = await fetch(downloadURL, {
-        method: "GET",
-        headers: { ...adminHeaders(), "Cache-Control": "no-cache" },
-        signal,
-      });
+      let resp;
+      try {
+        resp = await fetch(downloadURL, {
+          method: "GET",
+          headers: { "Cache-Control": "no-cache" },
+          signal,
+        });
+      } catch (err) {
+        if (err.name === "AbortError") throw err;
+        const targetDesc = this.nodeObj ? `${this.nodeObj.name} (${downloadURL})` : "Web Center";
+        throw new Error(`Download connection failed [${targetDesc}]: ${err.message}`);
+      }
 
       if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
+        throw new Error(`Download HTTP ${resp.status}`);
       }
 
       if (!resp.body) {
@@ -1457,6 +1450,7 @@ class SpeedtestEngine {
     return { mbps: finalMbps, bytes: receivedBytes };
   }
 
+  // 阶段 3: 上传测速 (直接请求 Node 自身地址)
   async runUploadPhase() {
     this.setUIStage("upload", 70);
     els.cardUpload.classList.add("active");
@@ -1465,9 +1459,11 @@ class SpeedtestEngine {
 
     const signal = this.abortController.signal;
     const testDurationMs = this.duration * 1000;
-    const uploadURL = this.target === "direct"
-      ? "/api/speedtest/upload"
-      : `/api/nodes/${this.target}/upload`;
+
+    // 非 Web 节点时直接请求 Node 节点自身的测速端点
+    const uploadURL = this.nodeObj
+      ? `${this.nodeObj.protocol}://${this.nodeObj.address}:${this.nodeObj.port}/upload`
+      : "/api/speedtest/upload";
 
     const chunkSize = 512 * 1024;
     const chunkBuffer = new Uint8Array(chunkSize);
@@ -1483,19 +1479,25 @@ class SpeedtestEngine {
     while (performance.now() - startTime < testDurationMs) {
       if (signal.aborted) throw new Error("aborted");
 
-      const resp = await fetch(uploadURL, {
-        method: "POST",
-        headers: {
-          ...adminHeaders(),
-          "Content-Type": "application/octet-stream",
-          "Cache-Control": "no-cache",
-        },
-        body: chunkBuffer,
-        signal,
-      });
+      let resp;
+      try {
+        resp = await fetch(uploadURL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Cache-Control": "no-cache",
+          },
+          body: chunkBuffer,
+          signal,
+        });
+      } catch (err) {
+        if (err.name === "AbortError") throw err;
+        const targetDesc = this.nodeObj ? `${this.nodeObj.name} (${uploadURL})` : "Web Center";
+        throw new Error(`Upload connection failed [${targetDesc}]: ${err.message}`);
+      }
 
       if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
+        throw new Error(`Upload HTTP ${resp.status}`);
       }
 
       totalUploadedBytes += chunkSize;
@@ -2023,10 +2025,8 @@ function initEventListeners() {
 
 // ================= 初始化入口 =================
 document.addEventListener("DOMContentLoaded", () => {
-  // 1. 初始化多语言系统 (根据浏览器语言自动判定)
   initLanguage();
 
-  // 2. 加载测速时长偏好 (默认 15s)
   const savedDuration = localStorage.getItem("ls_duration");
   if (savedDuration) {
     state.testDuration = parseInt(savedDuration, 10) || 15;
@@ -2035,13 +2035,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // 3. 初始化主题与图表
   initTheme();
   gaugeEngine = new SpeedometerGauge(els.gaugeCanvas);
   chartEngine = new SpeedChart(els.chartCanvas);
   chartEngine.maxTime = state.testDuration;
 
-  // 4. 加载数据并绑定事件
   loadTokens();
   loadHistory();
   initEventListeners();
