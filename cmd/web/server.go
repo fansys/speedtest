@@ -3,14 +3,26 @@ package main
 import (
 	"crypto/rand"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"librespeed-service/internal/config"
 	"librespeed-service/internal/security"
 	"librespeed-service/internal/store"
 )
+
+type webStatusRecorder struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rec *webStatusRecorder) WriteHeader(code int) {
+	rec.statusCode = code
+	rec.ResponseWriter.WriteHeader(code)
+}
 
 type server struct {
 	store         *store.Store
@@ -64,11 +76,14 @@ func NewServer(st *store.Store, settings *config.Settings, staticDir string) htt
 	mux.HandleFunc("GET /api/speedtest/download", s.handleDirectDownload)
 	mux.HandleFunc("POST /api/speedtest/upload", s.handleDirectUpload)
 
-	return s.corsAndSecurityMiddleware(mux)
+	return s.corsAndLoggingMiddleware(mux)
 }
 
-func (s *server) corsAndSecurityMiddleware(next http.Handler) http.Handler {
+func (s *server) corsAndLoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &webStatusRecorder{ResponseWriter: w, statusCode: http.StatusOK}
+
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS, HEAD")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Admin-Token, X-Registration-Token, X-Node-Key, Authorization, Cache-Control, X-Requested-With")
@@ -79,11 +94,16 @@ func (s *server) corsAndSecurityMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
 		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+			rec.WriteHeader(http.StatusNoContent)
+			log.Printf("[web] HTTP OPTIONS %s 204 %v client=%s", r.URL.Path, time.Since(start), r.RemoteAddr)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(rec, r)
+
+		if r.URL.Path != "/healthz" {
+			log.Printf("[web] HTTP %s %s %d %v client=%s", r.Method, r.URL.Path, rec.statusCode, time.Since(start), r.RemoteAddr)
+		}
 	})
 }
 
@@ -101,6 +121,7 @@ func (s *server) requireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := security.PickToken(r.Header.Get("X-Admin-Token"), r.Header.Get("Authorization"))
 		if token == "" || !security.ConstantTimeEquals(token, s.settings.AdminToken) {
+			log.Printf("[web] 管理接口未授权拒绝: %s %s, 来源IP=%s (ADMIN_TOKEN 无效或缺失)", r.Method, r.URL.Path, r.RemoteAddr)
 			writeError(w, http.StatusUnauthorized, "管理令牌无效或缺失")
 			return
 		}
@@ -112,6 +133,7 @@ func (s *server) requireRegistration(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := security.PickToken(r.Header.Get("X-Registration-Token"), r.Header.Get("Authorization"))
 		if token == "" || !security.ConstantTimeEquals(token, s.settings.RegistrationToken) {
+			log.Printf("[web] 节点注册未授权拒绝: %s %s, 来源IP=%s (REGISTRATION_TOKEN 无效或缺失)", r.Method, r.URL.Path, r.RemoteAddr)
 			writeError(w, http.StatusUnauthorized, "注册令牌无效或缺失")
 			return
 		}

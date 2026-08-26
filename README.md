@@ -56,6 +56,8 @@
 | `NODE_REGISTER_URL` | 注册地址，例如 `http://web:8080/api/register/auto`；只允许 http/https |
 | `REGISTRATION_TOKEN` | 与中心服务一致的注册令牌 |
 | `NODE_NAME` / `NODE_ADDRESS` / `NODE_PORT` / `NODE_PROTOCOL` | 注册时提交的节点信息 |
+| `NODE_LISTEN_PORT` | 可选，本地 HTTP 绑定的监听端口（默认等于 `NODE_PORT` / `8081`） |
+| `NODE_ADVERTISE_PORT` | 可选，注册并向中心公布的外部测速端口（默认等于 `NODE_PORT` / `NODE_LISTEN_PORT`，用于端口映射/NAT/反代场景） |
 | `NODE_METADATA_JSON` | 可选，附带的任意 JSON 元数据字符串 |
 | `NODE_INI` | node.ini 持久化路径 |
 | `NODE_REGISTER_RETRIES` | 网络失败时的最大重试次数（默认 10） |

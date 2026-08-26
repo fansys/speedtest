@@ -84,11 +84,11 @@ func TestNodePingAuthenticated(t *testing.T) {
 		t.Fatalf("ping status = %d, want 204", rec.Code)
 	}
 
-	req = httptest.NewRequest(http.MethodGet, "/ping", nil)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated ping status = %d, want 401", rec.Code)
+	reqUnauth := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	recUnauth := httptest.NewRecorder()
+	handler.ServeHTTP(recUnauth, reqUnauth)
+	if recUnauth.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated ping status = %d, want 401", recUnauth.Code)
 	}
 }
 
@@ -99,24 +99,24 @@ func TestNodeDownloadUpload(t *testing.T) {
 	}
 	handler := srv.routes()
 
-	req := httptest.NewRequest(http.MethodGet, "/download?bytes=2048", nil)
-	req.Header.Set("X-Node-Key", testNodeKey)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("download status = %d, want 200", rec.Code)
+	reqDl := httptest.NewRequest(http.MethodGet, "/download?bytes=2048", nil)
+	reqDl.Header.Set("X-Node-Key", testNodeKey)
+	recDl := httptest.NewRecorder()
+	handler.ServeHTTP(recDl, reqDl)
+	if recDl.Code != http.StatusOK {
+		t.Fatalf("download status = %d, want 200", recDl.Code)
 	}
-	if rec.Body.Len() != 2048 {
-		t.Fatalf("download body len = %d, want 2048", rec.Body.Len())
+	if recDl.Body.Len() != 2048 {
+		t.Fatalf("download body len = %d, want 2048", recDl.Body.Len())
 	}
 
 	uploadBody := bytes.NewReader(bytes.Repeat([]byte{'x'}, 4096))
-	req = httptest.NewRequest(http.MethodPost, "/upload", uploadBody)
-	req.Header.Set("X-Node-Key", testNodeKey)
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("upload status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	reqUl := httptest.NewRequest(http.MethodPost, "/upload", uploadBody)
+	reqUl.Header.Set("X-Node-Key", testNodeKey)
+	recUl := httptest.NewRecorder()
+	handler.ServeHTTP(recUl, reqUl)
+	if recUl.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, want 200, body=%s", recUl.Code, recUl.Body.String())
 	}
 }
 
@@ -192,7 +192,8 @@ func TestResolveNodeKeyAutoRegister(t *testing.T) {
 		RegistrationToken: "test-reg-token",
 		Name:              "test-node",
 		Address:           "127.0.0.1",
-		Port:              8081,
+		ListenPort:        8081,
+		AdvertisePort:     18081, // 支持不同的测速与监听端口
 		Protocol:          "http",
 		NodeIni:           iniPath,
 		RegisterRetries:   2,
@@ -206,13 +207,19 @@ func TestResolveNodeKeyAutoRegister(t *testing.T) {
 		t.Fatalf("got key %q, want %q", key, testNodeKey)
 	}
 
-	// 验证 node.ini 是否生成且有效
+	// 验证 node.ini 是否生成且包含正确端口
 	state, err := config.LoadNodeState(iniPath)
 	if err != nil || state == nil {
 		t.Fatalf("LoadNodeState failed: %v", err)
 	}
 	if state["node_key"] != testNodeKey {
 		t.Fatalf("state[node_key] = %q, want %q", state["node_key"], testNodeKey)
+	}
+	if state["port"] != "18081" {
+		t.Fatalf("state[port] = %q, want 18081", state["port"])
+	}
+	if state["listen_port"] != "8081" {
+		t.Fatalf("state[listen_port] = %q, want 8081", state["listen_port"])
 	}
 
 	// 再次调用 resolveNodeKey，应当复用并更新
@@ -224,8 +231,9 @@ func TestResolveNodeKeyAutoRegister(t *testing.T) {
 	// 显式 NODE_KEY 时应当直接返回并不读写 node.ini
 	os.Remove(iniPath)
 	cfgExplicit := &config.NodeConfig{
-		NodeKey: "explicit-key-1234567890123456",
-		NodeIni: iniPath,
+		NodeKey:    "explicit-key-1234567890123456",
+		ListenPort: 8081,
+		NodeIni:    iniPath,
 	}
 	explicitKey, err := resolveNodeKey(cfgExplicit)
 	if err != nil || explicitKey != "explicit-key-1234567890123456" {

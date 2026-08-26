@@ -2,10 +2,9 @@
 //
 //	go run ./cmd/node
 //
-// 密钥来源二选一：
-//   - NODE_KEY 非空：直接使用该 key 启动，跳过自动注册。
-//   - 设置 NODE_REGISTER_URL（+ REGISTRATION_TOKEN + NODE_ADDRESS + NODE_PORT +
-//     NODE_INI）：启动前向中心服务自助注册，成功后把凭据原子写回 NODE_INI。
+// 端口支持分别配置：
+//   - 本地绑定监听端口：由 NODE_LISTEN_PORT (或 NODE_PORT) 指定，默认 8081；
+//   - 外部公布测速端口：由 NODE_ADVERTISE_PORT (或 NODE_PORT) 指定，默认等于监听端口。
 package main
 
 import (
@@ -27,18 +26,22 @@ func main() {
 		log.Fatalf("[node-agent] 配置加载失败: %v", err)
 	}
 
+	log.Printf("[node-agent] 启动准备: name=%q, host=%s, 本地监听端口=%d, 外部测速端口=%d, 协议=%s",
+		cfg.Name, cfg.Host, cfg.ListenPort, cfg.Port(), cfg.Protocol)
+
 	nodeKey, err := resolveNodeKey(cfg)
 	if err != nil {
-		log.Fatalf("[node-agent] %v", err)
+		log.Fatalf("[node-agent] 密钥初始化失败，节点退出: %v", err)
 	}
 
 	srv, err := newNodeServer(nodeKey, cfg.Name, cfg.MaxTestBytes)
 	if err != nil {
-		log.Fatalf("[node-agent] %v", err)
+		log.Fatalf("[node-agent] 创建服务失败: %v", err)
 	}
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-	log.Printf("[node-agent] 监听 %s，name=%s", addr, cfg.Name)
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.ListenPort)
+	log.Printf("[node-agent] 服务已就绪，正在监听 %s (向中心公布的外部测速端口: %d), 密钥指纹=%s",
+		addr, cfg.Port(), security.KeyFingerprint(nodeKey))
 
 	server := &http.Server{
 		Addr:              addr,
@@ -48,17 +51,14 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("[node-agent] 服务退出: %v", err)
+		log.Fatalf("[node-agent] 服务异常退出: %v", err)
 	}
 }
 
 // resolveNodeKey 按优先级解析出启动要用的 node_key：显式覆盖 > 自动注册 > 报错退出。
-//
-// 自动注册模式下会先读取 node.ini 里上次保存的 key 作为 existing_node_key 带给
-// 服务端尝试复用，成功/复用后都会把最新状态原子写回 node.ini。
 func resolveNodeKey(cfg *config.NodeConfig) (string, error) {
 	if key := strings.TrimSpace(cfg.NodeKey); key != "" {
-		log.Printf("[node-agent] 使用显式提供的 NODE_KEY 启动（跳过自动注册），指纹=%s", security.KeyFingerprint(key))
+		log.Printf("[node-agent] 使用显式环境变量 NODE_KEY 启动（跳过自动注册），指纹=%s", security.KeyFingerprint(key))
 		return key, nil
 	}
 
@@ -80,38 +80,58 @@ func resolveNodeKey(cfg *config.NodeConfig) (string, error) {
 
 	state, err := config.LoadNodeState(cfg.NodeIni)
 	if err != nil {
+		log.Printf("[node-agent] 读取本地历史状态文件 %s 失败: %v", cfg.NodeIni, err)
 		return "", err
 	}
 	existingKey := ""
 	if state != nil {
 		existingKey = strings.TrimSpace(state["node_key"])
+		log.Printf("[node-agent] 已加载本地历史凭据 (%s): node_id=%s, 旧Key指纹=%s",
+			cfg.NodeIni, state["node_id"], security.KeyFingerprint(existingKey))
+	} else {
+		log.Printf("[node-agent] 本地状态文件 %s 不存在，将以首次注册模式启动", cfg.NodeIni)
 	}
 
-	result, err := registerWithRetries(cfg.RegisterURL, cfg.RegistrationToken, cfg.Name, cfg.Address, cfg.Protocol, cfg.Port, cfg.MetadataJSON, existingKey, cfg.RegisterRetries)
+	result, err := registerWithRetries(
+		cfg.RegisterURL,
+		cfg.RegistrationToken,
+		cfg.Name,
+		cfg.Address,
+		cfg.Protocol,
+		cfg.Port(), // 向中心注册外部公布的测速端口
+		cfg.MetadataJSON,
+		existingKey,
+		cfg.RegisterRetries,
+	)
 	if err != nil {
-		return "", fmt.Errorf("自动注册失败，节点未启动: %w", err)
+		return "", fmt.Errorf("自动注册失败，节点拒绝启动: %w", err)
 	}
 	nodeKey := strings.TrimSpace(result.NodeKey)
 	if nodeKey == "" {
-		return "", fmt.Errorf("注册响应中没有 node_key，节点未启动")
+		return "", fmt.Errorf("注册响应中未包含 node_key，节点拒绝启动")
 	}
 
+	// 原子写回 node.ini (0600 权限)
 	if err := config.SaveNodeState(cfg.NodeIni, map[string]string{
-		"node_id":    strconv.FormatInt(result.ID, 10),
-		"node_key":   nodeKey,
-		"name":       cfg.Name,
-		"address":    cfg.Address,
-		"port":       strconv.Itoa(cfg.Port),
-		"protocol":   cfg.Protocol,
-		"updated_at": time.Now().UTC().Format(time.RFC3339),
+		"node_id":     strconv.FormatInt(result.ID, 10),
+		"node_key":    nodeKey,
+		"name":        cfg.Name,
+		"address":     cfg.Address,
+		"port":        strconv.Itoa(cfg.Port()),
+		"listen_port": strconv.Itoa(cfg.ListenPort),
+		"protocol":    cfg.Protocol,
+		"updated_at":  time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		log.Printf("[node-agent] 警告: 写入 %s 失败: %v", cfg.NodeIni, err)
+		log.Printf("[node-agent] 警告: 写入凭据到 %s 失败: %v", cfg.NodeIni, err)
+	} else {
+		log.Printf("[node-agent] 注册凭据已原子持久化到 %s (权限 0600)", cfg.NodeIni)
 	}
 
-	statusWord := "生成了新的"
+	statusWord := "新生成Key"
 	if result.Reused {
-		statusWord = "复用了已有"
+		statusWord = "复用已有Key"
 	}
-	log.Printf("[node-agent] 自动注册成功，%s node_key，node_id=%d 指纹=%s", statusWord, result.ID, security.KeyFingerprint(nodeKey))
+	log.Printf("[node-agent] 节点注册就绪: node_id=%d, 测速路由=%s://%s:%d, Key状态=%s, Key指纹=%s",
+		result.ID, cfg.Protocol, cfg.Address, cfg.Port(), statusWord, security.KeyFingerprint(nodeKey))
 	return nodeKey, nil
 }

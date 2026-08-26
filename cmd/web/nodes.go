@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -95,6 +96,7 @@ func (s *server) setEnabled(w http.ResponseWriter, r *http.Request, enabled bool
 		}
 		return
 	}
+	log.Printf("[web] 节点开关状态更新: id=%d, name=%q, enabled=%t", node.ID, node.Name, node.Enabled)
 	out, err := nodeToOut(node)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "序列化失败")
@@ -117,11 +119,10 @@ func (s *server) handleDeleteNode(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	log.Printf("[web] 节点已删除: id=%d", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// resolveNodeKey 决定这次调用要用哪个 node_key：请求体/请求头显式提供的优先；
-// 否则尝试用 SECRET_KEY 解封存储的密文；都没有则报错。
 func (s *server) resolveNodeKey(node *store.Node, supplied *string) (nodeKey string, status int, detail string) {
 	if supplied != nil && *supplied != "" {
 		if security.HashNodeKey(*supplied) != node.NodeKeyHash {
@@ -173,11 +174,13 @@ func (s *server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	if err := s.checkHealth(node, nodeKey); err != nil {
 		msg := err.Error()
 		_ = s.store.UpdateHealthResult(node.ID, "error", nil, &msg, false)
+		log.Printf("[web] 节点巡检异常: id=%d, name=%q, error=%s", node.ID, node.Name, msg)
 		writeJSON(w, http.StatusOK, healthResult{NodeID: node.ID, Status: "error", Error: &msg})
 		return
 	}
 	latencyMs := time.Since(start).Seconds() * 1000
 	_ = s.store.UpdateHealthResult(node.ID, "online", &latencyMs, nil, true)
+	log.Printf("[web] 节点巡检正常: id=%d, name=%q, status=online, latency=%.1fms", node.ID, node.Name, latencyMs)
 	writeJSON(w, http.StatusOK, healthResult{NodeID: node.ID, Status: "online", LatencyMs: &latencyMs})
 }
 
@@ -207,6 +210,8 @@ func (s *server) handleSpeedtest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, detail)
 		return
 	}
+
+	log.Printf("[web] 发起后端节点测速: id=%d, name=%q, target=%s://%s:%d", node.ID, node.Name, node.Protocol, node.Address, node.Port)
 
 	result := speedtestResult{NodeID: node.ID}
 	err := func() error {
@@ -246,12 +251,15 @@ func (s *server) handleSpeedtest(w http.ResponseWriter, r *http.Request) {
 		msg := err.Error()
 		result.Error = &msg
 		_ = s.store.UpdateHealthResult(node.ID, "error", nil, &msg, false)
+		log.Printf("[web] 后端节点测速失败: id=%d, name=%q, error=%s", node.ID, node.Name, msg)
 		writeJSON(w, http.StatusOK, result)
 		return
 	}
 
 	latency := result.Ping.MinMs
 	_ = s.store.UpdateHealthResult(node.ID, "online", &latency, nil, true)
+	log.Printf("[web] 后端节点测速完成: id=%d, name=%q, ping=%.1fms, download=%.2fMbps, upload=%.2fMbps",
+		node.ID, node.Name, result.Ping.AvgMs, result.Download.Mbps, result.Upload.Mbps)
 	writeJSON(w, http.StatusOK, result)
 }
 
