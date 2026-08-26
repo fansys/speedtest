@@ -32,15 +32,18 @@ jobs:
           go-version: '1.22'
           cache: true
 
-      - name: Install Cross Compilers & Tools
+      - name: Set up QEMU (for multi-arch CGO compilation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Packaging Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            gcc-aarch64-linux-gnu \
-            gcc-mingw-w64-x86-64 \
-            libsqlite3-dev \
-            zip \
-            tar
+          sudo apt-get install -y zip tar
 
       - name: Set Release Version
         id: vars
@@ -61,7 +64,7 @@ jobs:
           LDFLAGS="-s -w -X main.version=${VERSION}"
 
           # -------------------------------------------------------------
-          # 1. 编译 Node Agent (纯 Go，CGO_ENABLED=0，支持全平台)
+          # 1. 编译 Node Agent (纯 Go，CGO_ENABLED=0，原生交叉编译全平台)
           # -------------------------------------------------------------
           echo "===> Compiling librespeed-node binaries..."
 
@@ -86,22 +89,20 @@ jobs:
           CGO_ENABLED=0 GOOS=freebsd GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_freebsd_arm64 ./cmd/node
 
           # -------------------------------------------------------------
-          # 2. 编译 Web 中心服务 (CGO 动态链接系统 SQLite)
+          # 2. 编译 Web 中心服务 (通过 Buildx 多架构容器编译，解决 CGO 动态库依赖)
           # -------------------------------------------------------------
-          echo "===> Compiling librespeed-web binaries..."
+          echo "===> Compiling librespeed-web binaries via Buildx..."
 
-          # Linux AMD64 (Native host CGO)
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_amd64 ./cmd/web
-
-          # Linux ARM64 (Cross-compile via aarch64-linux-gnu-gcc)
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_arm64 ./cmd/web
+          mkdir -p dist/web_amd64 dist/web_arm64
+          docker buildx build --platform linux/amd64 -f Dockerfile.web --target artifacts --output type=local,dest=dist/web_amd64 .
+          docker buildx build --platform linux/arm64 -f Dockerfile.web --target artifacts --output type=local,dest=dist/web_arm64 .
 
           # -------------------------------------------------------------
           # 3. 打包发布归档 (.tar.gz / .zip)
           # -------------------------------------------------------------
-          echo "===> Packaging archives..."
+          echo "===> Packaging release archives..."
 
-          # 打包 Node Agent 归档
+          # 打包 Node Agent 归档 (Linux / Darwin / FreeBSD)
           for os in linux darwin freebsd; do
             for arch in amd64 arm64 armv7 386 riscv64; do
               bin="dist/librespeed-node_${os}_${arch}"
@@ -116,7 +117,7 @@ jobs:
             done
           done
 
-          # 打包 Windows Node 归档
+          # 打包 Windows Node Agent 归档
           for arch in amd64 arm64 386; do
             bin="dist/librespeed-node_windows_${arch}.exe"
             if [ -f "$bin" ]; then
@@ -129,9 +130,9 @@ jobs:
             fi
           done
 
-          # 打包 Web 服务归档 (包含 static 静态目录)
+          # 打包 Web 中心服务归档 (含二进制 + static/ 静态资源目录 + 配置文件)
           for arch in amd64 arm64; do
-            bin="dist/librespeed-web_linux_${arch}"
+            bin="dist/web_${arch}/librespeed-web"
             if [ -f "$bin" ]; then
               pkg_dir="dist/tmp_web_linux_${arch}"
               mkdir -p "$pkg_dir"
