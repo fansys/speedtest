@@ -1,0 +1,38 @@
+#
+# 中心 Web 服务镜像（cmd/web）。internal/sqlite3 用 CGO 动态链接系统 libsqlite3；
+# golang:bookworm 已带 gcc 和 SQLite 运行库，最终镜像只需安装 libsqlite3-0。
+FROM golang:1.26-bookworm AS builder
+
+WORKDIR /src
+# 只复制构建所需的目录，不把 .env / data/ / .git 等仓库其它内容带进构建上下文。
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+
+RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/librespeed-web ./cmd/web
+
+FROM golang:1.26-bookworm
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin webapp \
+    && mkdir -p /data /app/static \
+    && chown -R webapp:webapp /data /app
+
+WORKDIR /app
+COPY --from=builder --chown=webapp:webapp /out/librespeed-web /usr/local/bin/librespeed-web
+COPY --chown=webapp:webapp static ./static
+
+ENV HOST=0.0.0.0 \
+    PORT=8080 \
+    DATABASE_URL=sqlite:///data/librespeed.db
+
+# 以非 root 用户运行，缩小容器被攻破后的权限面。
+USER webapp
+
+VOLUME ["/data"]
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget --spider -q http://127.0.0.1:8080/healthz || exit 1
+
+CMD ["/usr/local/bin/librespeed-web"]

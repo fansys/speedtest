@@ -1,0 +1,56 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: librespeed-web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      # 容器内必须监听 0.0.0.0 才能被端口映射访问到；DATABASE_URL 固定指向下面
+      # 挂载的 /data volume，不用 .env 里给本地开发用的相对路径。
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATABASE_URL: sqlite:///data/librespeed.db
+    volumes:
+      - web-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    image: librespeed-node
+    ports:
+      - "${NODE_PORT:-8081}:8081"
+    environment:
+      # 自动注册（推荐）：容器启动前会自己向 web 服务注册，无需手动 curl。
+      NODE_REGISTER_URL: ${NODE_REGISTER_URL:-http://web:8080/api/register/auto}
+      REGISTRATION_TOKEN: ${REGISTRATION_TOKEN:-}
+      NODE_NAME: ${NODE_NAME:-node-1}
+      NODE_ADDRESS: ${NODE_ADDRESS:-node}
+      NODE_PORT: ${NODE_PORT:-8081}
+      NODE_PROTOCOL: ${NODE_PROTOCOL:-http}
+      NODE_METADATA_JSON: ${NODE_METADATA_JSON:-}
+      NODE_REGISTER_RETRIES: ${NODE_REGISTER_RETRIES:-10}
+      NODE_INI: /data/node.ini
+      # 显式高级覆盖：非空时跳过自动注册。
+      NODE_KEY: ${NODE_KEY:-}
+    volumes:
+      - node-data:/data
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  web-data:
+  node-data:

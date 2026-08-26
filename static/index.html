@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LibreSpeed 科技测速中心 - 分布式网络性能测速平台</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- 背景科技光晕与粒子网格 -->
+  <div class="tech-bg-grid"></div>
+  <div class="tech-glow-ambient"></div>
+
+  <!-- 顶部科技 HUD 导航栏 -->
+  <header class="tech-nav">
+    <div class="nav-wrapper">
+      <div class="brand-hud">
+        <div class="brand-reactor">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+          </svg>
+        </div>
+        <div class="brand-meta">
+          <div class="brand-logo">LIBRESPEED<span class="brand-dot"></span></div>
+          <div class="brand-desc" data-i18n="brand_desc">分布式网络性能测速平台</div>
+        </div>
+      </div>
+
+      <div class="telemetry-pill">
+        <span class="beacon-pulse"></span>
+        <span id="stat-nodes-summary"><strong id="stat-online-count">0</strong> / <span id="stat-total-count">0</span> <span data-i18n="nodes_online_suffix">个节点在线</span></span>
+      </div>
+
+      <div class="nav-controls">
+        <!-- 语言切换按钮 (中文 / English) -->
+        <button id="btn-lang-toggle" class="hud-btn hud-btn-sm" title="Switch Language / 切换语言">
+          <span id="lang-label">EN</span>
+        </button>
+
+        <!-- 主题切换按钮 (亮色 / 暗色) -->
+        <button id="btn-theme-toggle" class="hud-btn hud-btn-sm" title="切换模式">
+          <svg id="theme-icon-dark" class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg id="theme-icon-light" class="svg-ico hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <span id="theme-label" data-i18n="theme_dark">暗色</span>
+        </button>
+
+        <button id="btn-refresh" class="hud-btn hud-btn-sm" title="刷新状态">
+          <svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          <span data-i18n="sync">刷新</span>
+        </button>
+
+        <button id="btn-open-tokens" class="hud-btn hud-btn-sm" title="访问密钥">
+          <svg class="svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span id="token-status-label" data-i18n="token">令牌</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="hud-container">
+    <!-- 主测速控制台 (Quantum Speed Console) -->
+    <section class="hud-card main-console-card">
+      <div class="hud-corner top-left"></div>
+      <div class="hud-corner top-right"></div>
+      <div class="hud-corner bottom-left"></div>
+      <div class="hud-corner bottom-right"></div>
+
+      <!-- 节点与时长配置条 -->
+      <div class="node-router-strip">
+        <div class="router-target">
+          <span class="router-tag" data-i18n="node_route">测速节点</span>
+          <div class="router-select-box">
+            <span class="status-beacon beacon-online" id="target-status-dot"></span>
+            <select id="speedtest-node-select" class="router-select">
+              <option value="direct" data-i18n="direct_node">Web 中心服务 (本机直连)</option>
+            </select>
+          </div>
+          <span class="router-latency-chip" id="target-latency-badge" data-i18n="rtt_local">延迟: 本地</span>
+
+          <!-- 测速时长配置 -->
+          <div class="duration-select-box">
+            <span class="duration-tag" data-i18n="duration_label">测速时长</span>
+            <select id="speedtest-duration-select" class="duration-select" title="设置单阶段测速时长">
+              <option value="5" data-i18n="dur_5">5 秒 (快速)</option>
+              <option value="10" data-i18n="dur_10">10 秒</option>
+              <option value="15" selected data-i18n="dur_15">15 秒 (默认)</option>
+              <option value="20" data-i18n="dur_20">20 秒</option>
+              <option value="30" data-i18n="dur_30">30 秒 (深度)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="router-action">
+          <button id="btn-pick-lowest" class="hud-link-btn" title="自动匹配延迟最低的在线节点" data-i18n="auto_pick">
+            自动优选节点
+          </button>
+        </div>
+      </div>
+
+      <!-- 核心三项实时遥测指标 -->
+      <div class="telemetry-grid">
+        <!-- Ping -->
+        <div class="telemetry-card" id="card-metric-ping">
+          <div class="telemetry-head">
+            <span class="telemetry-title" data-i18n="ping_title">网络延迟 (Ping)</span>
+            <span class="telemetry-icon-dot dot-ping"></span>
+          </div>
+          <div class="telemetry-value-wrap">
+            <span id="val-ping" class="telemetry-num num-ping">--</span>
+            <span class="telemetry-unit">ms</span>
+          </div>
+          <div class="telemetry-sub-row">
+            <span><span data-i18n="jitter">抖动</span> <strong id="val-jitter">--</strong> ms</span>
+            <span><span data-i18n="min">最小</span> <strong id="val-ping-min">--</strong> ms</span>
+          </div>
+        </div>
+
+        <!-- Download -->
+        <div class="telemetry-card" id="card-metric-download">
+          <div class="telemetry-head">
+            <span class="telemetry-title" data-i18n="dl_title">下载速率</span>
+            <span class="telemetry-icon-dot dot-download"></span>
+          </div>
+          <div class="telemetry-value-wrap">
+            <span id="val-download" class="telemetry-num num-download">--</span>
+            <span class="telemetry-unit">Mbps</span>
+          </div>
+          <div class="telemetry-sub-row">
+            <span><span data-i18n="peak">峰值</span> <strong id="val-download-peak">--</strong></span>
+            <span><span data-i18n="trans">流量</span> <strong id="val-download-bytes">--</strong></span>
+          </div>
+        </div>
+
+        <!-- Upload -->
+        <div class="telemetry-card" id="card-metric-upload">
+          <div class="telemetry-head">
+            <span class="telemetry-title" data-i18n="ul_title">上传速率</span>
+            <span class="telemetry-icon-dot dot-upload"></span>
+          </div>
+          <div class="telemetry-value-wrap">
+            <span id="val-upload" class="telemetry-num num-upload">--</span>
+            <span class="telemetry-unit">Mbps</span>
+          </div>
+          <div class="telemetry-sub-row">
+            <span><span data-i18n="peak">峰值</span> <strong id="val-upload-peak">--</strong></span>
+            <span><span data-i18n="trans">流量</span> <strong id="val-upload-bytes">--</strong></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 核心能量反应堆表盘 + 实时示波器图表 -->
+      <div class="quantum-stage">
+        <!-- 环形反应堆表盘 -->
+        <div class="reactor-gauge-wrapper">
+          <canvas id="gauge-canvas"></canvas>
+
+          <!-- 反应堆中心控制核心 -->
+          <div class="reactor-core">
+            <!-- 空闲状态：测速按钮 -->
+            <div id="dial-idle-view" class="core-view">
+              <button id="btn-start-test" class="btn-reactor-start">
+                <span class="reactor-ring-pulse"></span>
+                <span class="reactor-text-main" id="btn-start-main-text" data-i18n="start_main">测速</span>
+                <span class="reactor-text-sub" id="btn-start-sub-text" data-i18n="start_sub">点击开始</span>
+              </button>
+            </div>
+
+            <!-- 测速中：实时数字遥测流 -->
+            <div id="dial-running-view" class="core-view hidden">
+              <span id="gauge-live-label" class="live-stage-chip" data-i18n="ready">准备就绪</span>
+              <span id="gauge-live-value" class="live-digital-val">0.00</span>
+              <span id="gauge-live-unit" class="live-digital-unit">Mbps</span>
+              <button id="btn-cancel-test" class="btn-abort-action" data-i18n="abort">取消测速</button>
+            </div>
+
+            <!-- 测速完成：质量评级与重测 -->
+            <div id="dial-finished-view" class="core-view hidden">
+              <span class="rating-tier-text" id="finish-rating-badge">千兆极速宽带</span>
+              <span class="rating-tier-sub" id="finish-score-desc">网络状态极佳</span>
+              <button id="btn-retest-circle" class="btn-retest-action" data-i18n="retest">重新测速</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 实时示波器图表 -->
+        <div class="oscilloscope-wrapper">
+          <div class="oscilloscope-header">
+            <div class="oscilloscope-title">
+              <span class="scanner-dot"></span>
+              <span data-i18n="stream_title">实时速率波动图</span>
+            </div>
+            <div class="oscilloscope-legend">
+              <span class="leg-item"><span class="leg-dot dot-dl"></span><span data-i18n="legend_dl">下载</span></span>
+              <span class="leg-item"><span class="leg-dot dot-ul"></span><span data-i18n="legend_ul">上传</span></span>
+              <span class="peak-pill" id="chart-peak-badge">峰值: -- Mbps</span>
+            </div>
+          </div>
+          <div class="oscilloscope-canvas-box">
+            <canvas id="chart-canvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- 阶段流水线指示器 -->
+      <div class="pipeline-tracker">
+        <div class="pipeline-nodes">
+          <div class="pipe-node active" data-stage="ready"><span data-i18n="pipe_ready">准备就绪</span></div>
+          <div class="pipe-laser" id="line-1"></div>
+          <div class="pipe-node" data-stage="ping"><span data-i18n="pipe_ping">网络延迟</span></div>
+          <div class="pipe-laser" id="line-2"></div>
+          <div class="pipe-node" data-stage="download"><span data-i18n="pipe_dl">下载测速</span></div>
+          <div class="pipe-laser" id="line-3"></div>
+          <div class="pipe-node" data-stage="upload"><span data-i18n="pipe_ul">上传测速</span></div>
+          <div class="pipe-laser" id="line-4"></div>
+          <div class="pipe-node" data-stage="finished"><span data-i18n="pipe_done">测速完成</span></div>
+        </div>
+        <div class="laser-meter-track">
+          <div id="test-meter-bar" class="laser-meter-bar"></div>
+        </div>
+      </div>
+
+      <!-- 网络质量评级报告 -->
+      <div id="rating-evaluation-card" class="eval-report-card hidden">
+        <div class="eval-badge-seal" data-i18n="eval_badge_seal">评估</div>
+        <div class="eval-text-group">
+          <div class="eval-title-text" id="eval-title" data-i18n="eval_title">网络质量评估报告</div>
+          <div class="eval-desc-text" id="eval-desc" data-i18n="eval_done">测速完成</div>
+        </div>
+        <div class="eval-chip-group" id="eval-tags"></div>
+      </div>
+
+      <!-- 状态与异常通知栏 -->
+      <div id="test-status-banner" class="hud-status-strip info hidden">
+        <span id="test-status-text">系统就绪</span>
+      </div>
+      <div id="test-error-banner" class="hud-status-strip error hidden">
+        <span id="test-error-text"></span>
+        <button id="btn-dismiss-error" class="btn-dismiss-link" data-i18n="btn_dismiss">关闭</button>
+      </div>
+    </section>
+
+    <!-- 下方整合面板：选项卡系统 -->
+    <section class="hud-card sub-panel-card">
+      <div class="tabs-hud-header">
+        <div class="tabs-hud-nav">
+          <button class="hud-tab active" data-tab="history">
+            <span data-i18n="tab_history">测速历史记录</span>
+            <span class="hud-tab-badge" id="history-count-badge">0</span>
+          </button>
+          <button class="hud-tab" data-tab="nodes">
+            <span data-i18n="tab_nodes">节点管理</span>
+            <span class="hud-tab-badge" id="nodes-count-badge">0</span>
+          </button>
+          <button class="hud-tab" data-tab="register">
+            <span data-i18n="tab_register">注册新节点</span>
+          </button>
+        </div>
+
+        <!-- 历史记录工具栏 -->
+        <div class="tab-toolbar" id="tab-actions-history">
+          <button id="btn-export-history" class="hud-btn hud-btn-xs" data-i18n="export_csv">导出 CSV</button>
+          <button id="btn-clear-history" class="hud-btn hud-btn-xs" data-i18n="clear_history">清空历史</button>
+        </div>
+
+        <!-- 节点管理工具栏 -->
+        <div class="tab-toolbar hidden" id="tab-actions-nodes">
+          <div class="hud-search-wrap">
+            <svg class="search-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="filter-search" class="hud-search-input" placeholder="搜索节点名称或地址..." data-i18n-ph="search_nodes" />
+          </div>
+          <div class="hud-pill-filter">
+            <button class="hud-filter-btn active" data-filter="all" data-i18n="filter_all">全部</button>
+            <button class="hud-filter-btn" data-filter="online" data-i18n="filter_online">在线</button>
+            <button class="hud-filter-btn" data-filter="enabled" data-i18n="filter_enabled">已启用</button>
+            <button class="hud-filter-btn" data-filter="error" data-i18n="filter_offline">离线</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs-hud-body">
+        <!-- Tab 1: 测速历史 -->
+        <div class="hud-tab-pane active" id="pane-history">
+          <div class="hud-table-responsive">
+            <table class="hud-table" id="history-table">
+              <thead>
+                <tr>
+                  <th data-i18n="th_time">时间</th>
+                  <th data-i18n="th_target">测速目标</th>
+                  <th data-i18n="th_ping">延迟</th>
+                  <th data-i18n="th_jitter">抖动</th>
+                  <th data-i18n="th_dl">下载速率</th>
+                  <th data-i18n="th_ul">上传速率</th>
+                  <th class="col-right" data-i18n="th_actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="history-table-body"></tbody>
+            </table>
+          </div>
+          <div id="history-empty" class="hud-empty-state">
+            <p data-i18n="hist_empty">暂无测速记录，完成测速后将自动记录于此。</p>
+          </div>
+        </div>
+
+        <!-- Tab 2: 节点管理 -->
+        <div class="hud-tab-pane" id="pane-nodes">
+          <div class="hud-table-responsive">
+            <table class="hud-table" id="nodes-table">
+              <thead>
+                <tr>
+                  <th style="width: 50px;" data-i18n="th_id">序号</th>
+                  <th data-i18n="th_name">节点名称</th>
+                  <th data-i18n="th_route">地址与协议</th>
+                  <th data-i18n="th_fp">安全指纹</th>
+                  <th data-i18n="th_status">状态</th>
+                  <th data-i18n="th_enable">开关</th>
+                  <th data-i18n="th_lat">最近延迟</th>
+                  <th class="col-right" data-i18n="th_actions">操作</th>
+                </tr>
+              </thead>
+              <tbody id="nodes-table-body"></tbody>
+            </table>
+          </div>
+          <div id="nodes-loading" class="hud-empty-state hidden">
+            <div class="hud-spinner"></div>
+            <p data-i18n="nodes_loading">正在加载节点列表...</p>
+          </div>
+          <div id="nodes-empty" class="hud-empty-state hidden">
+            <p id="empty-message" data-i18n="nodes_empty">暂无已注册节点</p>
+          </div>
+        </div>
+
+        <!-- Tab 3: 注册新节点 -->
+        <div class="hud-tab-pane" id="pane-register">
+          <form id="form-register" class="hud-form">
+            <div class="hud-form-grid">
+              <div class="form-col-2">
+                <label for="reg-name" class="hud-label" data-i18n="reg_name_label">节点显示名称 *</label>
+                <input id="reg-name" class="hud-input" placeholder="例如：上海电信-01" data-i18n-ph="reg_name_ph" required />
+              </div>
+              <div class="form-col-2">
+                <label for="reg-address" class="hud-label" data-i18n="reg_addr_label">节点地址或域名 *</label>
+                <input id="reg-address" class="hud-input" placeholder="127.0.0.1 或 node.internal" data-i18n-ph="reg_addr_ph" required />
+              </div>
+              <div class="form-col-1">
+                <label for="reg-port" class="hud-label" data-i18n="reg_port_label">服务端口 *</label>
+                <input id="reg-port" type="number" class="hud-input" placeholder="8081" value="8081" required min="1" max="65535" />
+              </div>
+              <div class="form-col-1">
+                <label for="reg-protocol" class="hud-label" data-i18n="reg_proto_label">通信协议</label>
+                <select id="reg-protocol" class="hud-select">
+                  <option value="http">http</option>
+                  <option value="https">https</option>
+                </select>
+              </div>
+              <div class="form-col-4">
+                <label for="reg-metadata" class="hud-label" data-i18n="reg_meta_label">元数据 (可选 JSON)</label>
+                <input id="reg-metadata" class="hud-input" placeholder='例如：{"region":"cn-east"}' data-i18n-ph="reg_meta_ph" />
+              </div>
+            </div>
+            <div class="hud-form-footer">
+              <span class="hud-hint" data-i18n="reg_hint">注册成功后服务端将自动生成高熵密钥，并在弹窗中仅展示一次。</span>
+              <button type="submit" class="hud-btn hud-btn-primary" data-i18n="reg_btn">立即注册节点</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 模态弹窗：一次性密钥展示 -->
+  <dialog id="modal-one-time-key" class="hud-modal">
+    <div class="hud-modal-content">
+      <div class="hud-modal-header">
+        <h3 data-i18n="key_modal_title">节点密钥生成成功</h3>
+      </div>
+      <div class="hud-modal-body">
+        <div class="hud-notice" data-i18n="key_modal_notice">
+          这是该节点的专属密钥，只会在此处明文展示一次。关闭后系统将无法找回。
+        </div>
+        <div class="hud-key-box">
+          <div class="hud-key-label" data-i18n="key_modal_label">生成的密钥 (NODE_KEY)</div>
+          <div class="hud-key-code" id="display-new-key"></div>
+          <button type="button" class="hud-btn hud-btn-primary" id="btn-copy-key">
+            <span id="copy-key-text" data-i18n="key_copy_btn">复制密钥</span>
+          </button>
+        </div>
+        <p class="hud-hint" data-i18n="key_modal_hint">请妥善保存此密钥，并注入节点 Agent 的 NODE_KEY 环境变量。</p>
+      </div>
+      <div class="hud-modal-footer">
+        <button type="button" class="hud-btn hud-btn-primary" id="btn-close-key-modal" data-i18n="key_modal_close">我已妥善保存并关闭</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- 模态弹窗：令牌配置 -->
+  <dialog id="modal-tokens" class="hud-modal">
+    <div class="hud-modal-content">
+      <div class="hud-modal-header">
+        <h3 data-i18n="token_modal_title">管理与注册令牌配置</h3>
+        <button class="modal-close" id="btn-close-tokens">&times;</button>
+      </div>
+      <form id="form-tokens" class="hud-modal-body">
+        <div class="hud-notice" data-i18n="token_modal_notice">
+          令牌仅保存在当前浏览器的本地存储中，供管理和注册节点使用。
+        </div>
+        <div class="hud-field">
+          <label for="input-admin-token" class="hud-label" data-i18n="admin_token_label">管理员令牌 (ADMIN_TOKEN)</label>
+          <div class="hud-pw-wrap">
+            <input type="password" id="input-admin-token" class="hud-input" placeholder="输入管理员令牌" data-i18n-ph="admin_token_ph" />
+            <button type="button" class="btn-toggle-pw" data-target="input-admin-token" data-i18n="btn_toggle_pw">显隐</button>
+          </div>
+        </div>
+        <div class="hud-field">
+          <label for="input-registration-token" class="hud-label" data-i18n="reg_token_label">节点注册令牌 (REGISTRATION_TOKEN)</label>
+          <div class="hud-pw-wrap">
+            <input type="password" id="input-registration-token" class="hud-input" placeholder="输入节点注册令牌" data-i18n-ph="reg_token_ph" />
+            <button type="button" class="btn-toggle-pw" data-target="input-registration-token" data-i18n="btn_toggle_pw">显隐</button>
+          </div>
+        </div>
+        <div class="hud-modal-footer">
+          <button type="button" class="hud-btn hud-btn-ghost" id="btn-clear-tokens" data-i18n="btn_clear_token">清空本地令牌</button>
+          <button type="submit" class="hud-btn hud-btn-primary" data-i18n="btn_save_token">保存配置</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
+
+  <!-- Toast 消息容器 -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

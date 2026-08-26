@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+data/
+node-data/
+.pytest_cache/
+*.db
+*.sqlite3
+*.tmp
+node.ini
+
+# Go 构建产物
+/librespeed-web
+/librespeed-node
+/bin/
+*.test
+coverage.out
