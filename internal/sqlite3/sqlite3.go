@@ -12,6 +12,7 @@ package sqlite3
 /*
 #cgo linux LDFLAGS: -l:libsqlite3.so.0
 #cgo darwin LDFLAGS: -lsqlite3
+#cgo windows LDFLAGS: -lsqlite3
 #include <stdlib.h>
 
 typedef struct sqlite3 sqlite3;

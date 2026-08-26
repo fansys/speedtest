@@ -216,6 +216,21 @@ go test -v ./...
 - 节点 agent CORS 与 OPTIONS 预检处理
 - 浏览器代理实时流式测速与后端批量测速端到端验证
 
+## CI/CD 与多平台发布
+
+项目已集成 GitHub Actions 自动化工作流：
+
+- **CI (`.github/workflows/ci.yml`)**：在 `push` / `pull_request` 时自动执行代码格式检查 (`gofmt`)、静态检查 (`go vet`)、单元测试 (`go test`) 及 Docker 构建验证。
+- **Release (`.github/workflows/release.yml`)**：在推送版本标签（如 `v1.0.0`）或手动触发时自动：
+  1. **多架构 Docker 镜像**：自动构建 `linux/amd64` 与 `linux/arm64` 镜像并推送到 GitHub Container Registry (GHCR)：
+     - `ghcr.io/<owner>/librespeed-web:latest` & `v*`
+     - `ghcr.io/<owner>/librespeed-node:latest` & `v*`
+  2. **多平台二进制打包发布**：自动编译并归档到 GitHub Releases，附带 SHA256 校验和 (`checksums.txt`)：
+     - **Linux** (`amd64`, `arm64`, `armv7`, `386`, `riscv64`)
+     - **macOS / Darwin** (`amd64` Intel, `arm64` Apple Silicon)
+     - **Windows** (`amd64`, `arm64`, `386`)
+     - **FreeBSD** (`amd64`, `arm64`)
+
 ## Docker
 
 中心服务和节点 agent 分别打包成两个独立镜像（`Dockerfile.web` / `Dockerfile.node`），各自可以
