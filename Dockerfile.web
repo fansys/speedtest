@@ -1,33 +1,32 @@
 #
-# 中心 Web 服务镜像（cmd/web）。internal/sqlite3 用 CGO 动态链接系统 libsqlite3；
-# golang:bookworm 已带 gcc 和 SQLite 运行库，最终镜像只需安装 libsqlite3-0。
+# 中心 Web 服务镜像（cmd/web）。
+# 基于纯 Go 标准库与官方标准 SQLite 引擎 (modernc.org/sqlite)，CGO_ENABLED=0 静态编译。
 FROM golang:1.26-bookworm AS builder
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+COPY vendor ./vendor
 COPY cmd ./cmd
 COPY internal ./internal
 
-RUN CGO_ENABLED=1 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/librespeed-web ./cmd/web
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/librespeed-web ./cmd/web
 
-FROM scratch AS artifacts
-COPY --from=builder /out/librespeed-web /librespeed-web
+FROM alpine:3.20
 
-FROM golang:1.26-bookworm
-
-RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin webapp \
+RUN apk add --no-cache wget ca-certificates \
+    && addgroup -g 10001 webapp \
+    && adduser -D -H -u 10001 -G webapp -s /sbin/nologin webapp \
     && mkdir -p /data /app/static \
     && chown -R webapp:webapp /data /app
 
 WORKDIR /app
-COPY --from=builder --chown=webapp:webapp /out/librespeed-web /usr/local/bin/librespeed-web
+COPY --from=builder /out/librespeed-web /usr/local/bin/librespeed-web
 COPY --chown=webapp:webapp static ./static
 
 ENV HOST=0.0.0.0 \
     PORT=8080 \
     DATABASE_URL=sqlite:///data/librespeed.db
 
-# 以非 root 用户运行，缩小容器被攻破后的权限面。
 USER webapp
 
 VOLUME ["/data"]

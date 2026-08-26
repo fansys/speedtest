@@ -1,21 +1,19 @@
 #
-# 节点 agent 镜像（cmd/node）。node 命令不依赖 internal/sqlite3 / internal/store，
-# 所以可以 CGO_ENABLED=0 静态编译，运行时用 alpine 即可，不需要任何 C 运行时库。
+# 节点 agent 镜像（cmd/node）。
+# 纯 Go 静态编译 (CGO_ENABLED=0)，运行时为极简 alpine 镜像。
 FROM golang:1.26-bookworm AS builder
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
+COPY vendor ./vendor
 COPY cmd ./cmd
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/librespeed-node ./cmd/node
-
-FROM scratch AS artifacts
-COPY --from=builder /out/librespeed-node /librespeed-node
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o /out/librespeed-node ./cmd/node
 
 FROM alpine:3.20
 
-RUN apk add --no-cache wget \
+RUN apk add --no-cache wget ca-certificates \
     && addgroup -g 10001 nodeagent \
     && adduser -D -H -u 10001 -G nodeagent -s /sbin/nologin nodeagent \
     && mkdir -p /data \
@@ -25,8 +23,6 @@ COPY --from=builder /out/librespeed-node /usr/local/bin/librespeed-node
 COPY docker/node-healthcheck.sh /usr/local/bin/node-healthcheck.sh
 RUN chmod +x /usr/local/bin/node-healthcheck.sh
 
-# 自动注册模式（推荐）：通过 docker-compose 或 -e 传入 NODE_REGISTER_URL + REGISTRATION_TOKEN + NODE_ADDRESS，
-# 容器启动时会自己完成注册，并把凭据原子写入 NODE_INI 指向的文件；无需手动 curl。
 ENV NODE_HOST=0.0.0.0 \
     NODE_PORT=8081 \
     NODE_NAME=node \

@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 jobs:
-  # ================= 编译并发布多平台二进制包 =================
+  # ================= 编译并发布全平台二进制包 =================
   build-and-release-binaries:
     name: Build & Release Binaries
     runs-on: ubuntu-latest
@@ -31,14 +31,6 @@ jobs:
         with:
           go-version: '1.22'
           cache: true
-
-      - name: Set up QEMU (for multi-arch CGO compilation)
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: linux/amd64,linux/arm64
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
 
       - name: Install Packaging Tools
         run: |
@@ -64,38 +56,52 @@ jobs:
           LDFLAGS="-s -w -X main.version=${VERSION}"
 
           # -------------------------------------------------------------
-          # 1. 编译 Node Agent (纯 Go，CGO_ENABLED=0，原生交叉编译全平台)
+          # 1. 编译 Node Agent (纯 Go 静态编译，支持全平台全架构)
           # -------------------------------------------------------------
           echo "===> Compiling librespeed-node binaries..."
 
-          # Linux AMD64 / ARM64 / ARMv7 / 386 / RISCV64
+          # Linux
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_linux_amd64 ./cmd/node
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_linux_arm64 ./cmd/node
           CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_linux_armv7 ./cmd/node
           CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_linux_386 ./cmd/node
           CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_linux_riscv64 ./cmd/node
 
-          # Darwin (macOS) AMD64 (Intel) / ARM64 (Apple Silicon)
+          # Darwin (macOS)
           CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_darwin_amd64 ./cmd/node
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_darwin_arm64 ./cmd/node
 
-          # Windows AMD64 / ARM64 / 386
+          # Windows
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_windows_amd64.exe ./cmd/node
           CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_windows_arm64.exe ./cmd/node
           CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_windows_386.exe ./cmd/node
 
-          # FreeBSD AMD64 / ARM64
+          # FreeBSD
           CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_freebsd_amd64 ./cmd/node
           CGO_ENABLED=0 GOOS=freebsd GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-node_freebsd_arm64 ./cmd/node
 
           # -------------------------------------------------------------
-          # 2. 编译 Web 中心服务 (通过 Buildx 多架构容器编译，解决 CGO 动态库依赖)
+          # 2. 编译 Web 中心服务 (标准 SQLite 引擎，纯 Go 静态编译)
           # -------------------------------------------------------------
-          echo "===> Compiling librespeed-web binaries via Buildx..."
+          echo "===> Compiling librespeed-web binaries..."
 
-          mkdir -p dist/web_amd64 dist/web_arm64
-          docker buildx build --platform linux/amd64 -f Dockerfile.web --target artifacts --output type=local,dest=dist/web_amd64 .
-          docker buildx build --platform linux/arm64 -f Dockerfile.web --target artifacts --output type=local,dest=dist/web_arm64 .
+          # Linux
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_amd64 ./cmd/web
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_arm64 ./cmd/web
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_armv7 ./cmd/web
+          CGO_ENABLED=0 GOOS=linux GOARCH=386 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_386 ./cmd/web
+          CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_linux_riscv64 ./cmd/web
+
+          # Darwin (macOS)
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_darwin_amd64 ./cmd/web
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_darwin_arm64 ./cmd/web
+
+          # Windows
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_windows_amd64.exe ./cmd/web
+          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_windows_arm64.exe ./cmd/web
+
+          # FreeBSD
+          CGO_ENABLED=0 GOOS=freebsd GOARCH=amd64 go build -trimpath -ldflags="${LDFLAGS}" -o dist/librespeed-web_freebsd_amd64 ./cmd/web
 
           # -------------------------------------------------------------
           # 3. 打包发布归档 (.tar.gz / .zip)
@@ -130,16 +136,32 @@ jobs:
             fi
           done
 
-          # 打包 Web 中心服务归档 (含二进制 + static/ 静态资源目录 + 配置文件)
+          # 打包 Web 中心服务归档 (Linux / Darwin / FreeBSD)
+          for os in linux darwin freebsd; do
+            for arch in amd64 arm64 armv7 386 riscv64; do
+              bin="dist/librespeed-web_${os}_${arch}"
+              if [ -f "$bin" ]; then
+                pkg_dir="dist/tmp_web_${os}_${arch}"
+                mkdir -p "$pkg_dir"
+                cp "$bin" "$pkg_dir/librespeed-web"
+                cp -r static "$pkg_dir/"
+                cp README.md .env.example "$pkg_dir/"
+                tar -czf "dist/packages/librespeed-web_${VERSION}_${os}_${arch}.tar.gz" -C "$pkg_dir" .
+                rm -rf "$pkg_dir"
+              fi
+            done
+          done
+
+          # 打包 Windows Web 中心服务归档
           for arch in amd64 arm64; do
-            bin="dist/web_${arch}/librespeed-web"
+            bin="dist/librespeed-web_windows_${arch}.exe"
             if [ -f "$bin" ]; then
-              pkg_dir="dist/tmp_web_linux_${arch}"
+              pkg_dir="dist/tmp_web_win_${arch}"
               mkdir -p "$pkg_dir"
-              cp "$bin" "$pkg_dir/librespeed-web"
+              cp "$bin" "$pkg_dir/librespeed-web.exe"
               cp -r static "$pkg_dir/"
               cp README.md .env.example "$pkg_dir/"
-              tar -czf "dist/packages/librespeed-web_${VERSION}_linux_${arch}.tar.gz" -C "$pkg_dir" .
+              (cd "$pkg_dir" && zip -q -r "../../dist/packages/librespeed-web_${VERSION}_windows_${arch}.zip" .)
               rm -rf "$pkg_dir"
             fi
           done

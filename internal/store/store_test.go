@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -158,5 +159,46 @@ func TestStoreRegisterReuse(t *testing.T) {
 	}
 	if node3.ID != node1.ID {
 		t.Fatalf("node ID changed on key rotation: id1=%d, id3=%d", node1.ID, node3.ID)
+	}
+}
+
+func TestStoreFilePersistence(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "nodes.db")
+
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+
+	gen, hash, fp, seal := mockKeyFuncs()
+	node, _, _, err := st.RegisterOrReuse(RegisterParams{
+		Name:        "persisted-node",
+		Address:     "192.168.1.50",
+		Port:        8081,
+		Protocol:    "http",
+		GenerateKey: gen,
+		HashKey:     hash,
+		Fingerprint: fp,
+		SealKey:     seal,
+	})
+	if err != nil {
+		t.Fatalf("RegisterOrReuse failed: %v", err)
+	}
+	st.Close()
+
+	// 重新打开并验证数据完整恢复
+	st2, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Reopen failed: %v", err)
+	}
+	defer st2.Close()
+
+	recovered, err := st2.Get(node.ID)
+	if err != nil {
+		t.Fatalf("Get recovered failed: %v", err)
+	}
+	if recovered.Name != "persisted-node" || recovered.Address != "192.168.1.50" {
+		t.Fatalf("Recovered node mismatch: %+v", recovered)
 	}
 }
