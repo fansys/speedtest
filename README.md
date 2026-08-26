@@ -257,10 +257,7 @@ docker run --rm -p 8081:8081 \
   librespeed-node
 ```
 
-两个镜像都以非 root 用户运行（`webapp` / `nodeagent`），构建上下文只复制各自需要的
-`go.mod`、`cmd/`、`internal/`（以及 web 镜像额外需要的 `static/`），不会把仓库里其它文件
-打进镜像。节点 agent 镜像内置 `HEALTHCHECK`（`docker/node-healthcheck.sh`：自动注册模式下会从
-`NODE_INI` 指向的 `node.ini` 里读取 key 再请求 `/healthz`）。
+构建上下文只复制各自需要的 `go.mod`、`cmd/`、`internal/`（以及 web 镜像额外需要的 `static/`），不会把仓库里其它无关文件打进镜像。节点 agent 镜像内置 `HEALTHCHECK`（`docker/node-healthcheck.sh`：自动注册模式下会从 `NODE_INI` 指向的 `node.ini` 里读取 key 再请求 `/healthz`）。
 
 ### 用 docker-compose 一起跑（推荐）
 

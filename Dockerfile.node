@@ -14,10 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o 
 FROM alpine:3.20
 
 RUN apk add --no-cache wget ca-certificates \
-    && addgroup -g 10001 nodeagent \
-    && adduser -D -H -u 10001 -G nodeagent -s /sbin/nologin nodeagent \
-    && mkdir -p /data \
-    && chown -R nodeagent:nodeagent /data
+    && mkdir -p /data
 
 COPY --from=builder /out/librespeed-node /usr/local/bin/librespeed-node
 COPY docker/node-healthcheck.sh /usr/local/bin/node-healthcheck.sh
@@ -29,8 +26,6 @@ ENV NODE_HOST=0.0.0.0 \
     NODE_PROTOCOL=http \
     NODE_INI=/data/node.ini \
     NODE_REGISTER_RETRIES=10
-
-USER nodeagent
 
 VOLUME ["/data"]
 

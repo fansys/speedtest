@@ -14,20 +14,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o 
 FROM alpine:3.20
 
 RUN apk add --no-cache wget ca-certificates \
-    && addgroup -g 10001 webapp \
-    && adduser -D -H -u 10001 -G webapp -s /sbin/nologin webapp \
-    && mkdir -p /data /app/static \
-    && chown -R webapp:webapp /data /app
+    && mkdir -p /data /app/static
 
 WORKDIR /app
 COPY --from=builder /out/librespeed-web /usr/local/bin/librespeed-web
-COPY --chown=webapp:webapp static ./static
+COPY static ./static
 
 ENV HOST=0.0.0.0 \
     PORT=8080 \
     DATABASE_URL=sqlite:///data/librespeed.db
-
-USER webapp
 
 VOLUME ["/data"]
 
