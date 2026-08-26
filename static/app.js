@@ -17,7 +17,7 @@ const i18nDict = {
     lang_btn: "English",
 
     node_route: "测速节点",
-    direct_node: "Web 中心服务 (本机直连)",
+    direct_node: "中心节点",
     rtt_local: "延迟: 本地",
     rtt_unknown: "延迟: 未知",
     duration_label: "测速时长",
@@ -176,7 +176,7 @@ const i18nDict = {
     lang_btn: "中文",
 
     node_route: "TARGET NODE",
-    direct_node: "Central Server (Direct)",
+    direct_node: "Central Server",
     rtt_local: "Latency: Local",
     rtt_unknown: "Latency: Unknown",
     duration_label: "DURATION",
